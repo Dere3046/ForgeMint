@@ -106,11 +106,13 @@ status_t BinderStub::onTransact(uint32_t code, const Parcel &data,
         }
     }
 
-    if (!found && code == BACKDOOR_CODE && reply) {
-        reply->writeStrongBinder(g_interceptor);
-        return OK;
+    if (!found || !info.target) {
+        if (code == BACKDOOR_CODE && reply) {
+            reply->writeStrongBinder(g_interceptor);
+            return OK;
+        }
+        return UNKNOWN_TRANSACTION;
     }
-    if (!found || !info.target) return UNKNOWN_TRANSACTION;
 
     sp<BBinder> real_target = info.target;
     sp<IBinder> callback = info.callback;
