@@ -130,6 +130,7 @@ status_t BinderStub::onTransact(uint32_t code, const Parcel &data,
     pre_req.writeUint32(flags);
     pre_req.writeInt32(info.uid);
     pre_req.writeInt32(info.pid);
+    pre_req.writeUint64(data.dataSize());
     pre_req.appendFrom(&data, 0, data.dataSize());
 
     status_t cb_status = OK;

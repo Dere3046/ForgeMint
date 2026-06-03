@@ -53,9 +53,11 @@ open class BinderInterceptor : Binder() {
             val callingUid = data.readInt()
             val callingPid = data.readInt()
 
+            val dataSize = data.readLong().toInt()
             val subData = Parcel.obtain()
-            subData.appendFrom(data, data.dataPosition(), data.dataAvail())
+            subData.appendFrom(data, data.dataPosition(), dataSize)
             subData.setDataPosition(0)
+            data.setDataPosition(data.dataPosition() + dataSize)
 
             val result = onPreTransact(txId, target, txCode, txFlags, callingUid, callingPid, subData)
             subData.recycle()
