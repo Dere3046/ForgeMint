@@ -131,11 +131,12 @@ class Keystore2Interceptor : BinderInterceptor() {
 
         private fun resolveCode(name: String): Int {
             return try {
-                IKeystoreService::class.java
+                IKeystoreService.Stub::class.java
                     .getDeclaredField(name)
                     .apply { isAccessible = true }
                     .getInt(null)
             } catch (e: Exception) {
+                Logger.e("Failed to resolve $name", e)
                 -1
             }
         }

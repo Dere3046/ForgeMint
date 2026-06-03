@@ -240,7 +240,7 @@ class KeyMintInterceptor(
 
         private fun resolveCode(name: String): Int {
             return try {
-                IKeystoreSecurityLevel::class.java
+                IKeystoreSecurityLevel.Stub::class.java
                     .getDeclaredField(name)
                     .apply { isAccessible = true }
                     .getInt(null)
