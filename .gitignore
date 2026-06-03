@@ -1,5 +1,30 @@
-build_arm64-v8a
-build_arm64
+# Android/Gradle
+.gradle/
 build/
-lib/
-bin/
+local.properties
+
+# IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# NDK/CMake
+externalNativeBuild/
+.cxx/
+
+# Module output
+out/*.zip
+
+# Generated
+*.dex
+*.class
+*.log
+*.hprof

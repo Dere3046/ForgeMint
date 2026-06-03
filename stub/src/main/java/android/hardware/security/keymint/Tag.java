@@ -1,0 +1,37 @@
+package android.hardware.security.keymint;
+
+public @interface Tag {
+    int INVALID = -1;
+    int PURPOSE = 1;
+    int ALGORITHM = 2;
+    int KEY_SIZE = 3;
+    int BLOCK_MODE = 4;
+    int DIGEST = 5;
+    int PADDING = 6;
+    int CALLER_NONCE = 7;
+    int MIN_MAC_LENGTH = 8;
+    int EC_CURVE = 10;
+    int RSA_PUBLIC_EXPONENT = 200;
+    int NO_AUTH_REQUIRED = 503;
+    int ORIGIN = 702;
+    int CREATION_DATETIME = 701;
+    int OS_VERSION = 705;
+    int OS_PATCHLEVEL = 706;
+    int ATTESTATION_CHALLENGE = 708;
+    int ATTESTATION_APPLICATION_ID = 709;
+    int ATTESTATION_ID_BRAND = 710;
+    int ATTESTATION_ID_DEVICE = 711;
+    int ATTESTATION_ID_PRODUCT = 712;
+    int ATTESTATION_ID_SERIAL = 713;
+    int ATTESTATION_ID_IMEI = 714;
+    int ATTESTATION_ID_MEID = 715;
+    int ATTESTATION_ID_MANUFACTURER = 716;
+    int ATTESTATION_ID_MODEL = 717;
+    int ATTESTATION_ID_SECOND_IMEI = 723;
+    int VENDOR_PATCHLEVEL = 718;
+    int BOOT_PATCHLEVEL = 719;
+    int CERTIFICATE_SERIAL = 1006;
+    int CERTIFICATE_SUBJECT = 1007;
+    int CERTIFICATE_NOT_BEFORE = 1008;
+    int CERTIFICATE_NOT_AFTER = 1009;
+}

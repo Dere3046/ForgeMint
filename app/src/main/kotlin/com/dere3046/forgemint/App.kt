@@ -1,0 +1,151 @@
+package com.dere3046.forgemint
+
+import android.os.IBinder
+import android.os.Looper
+import android.os.ServiceManager
+import android.system.keystore2.IKeystoreService
+import android.hardware.security.keymint.SecurityLevel
+import java.security.Security
+import org.bouncycastle.jce.provider.BouncyCastleProvider
+
+object App {
+
+    private const val KEYSTORE_SERVICE = "android.system.keystore2.IKeystoreService/default"
+    private const val RETRY_DELAY_MS = 1000L
+
+    private lateinit var modDir: String
+
+    @JvmStatic
+    fun main(args: Array<String>) {
+        modDir = System.getProperty("moddir", "/data/adb/modules/forgemint")
+        Logger.i("ForgeMint daemon starting (moddir=$modDir)")
+
+        setupProviders()
+        Looper.prepareMainLooper()
+
+        ConfigManager.initialize()
+        ConfigManager.checkTeeStatus()
+
+        while (true) {
+            try {
+                val ksBinder = ServiceManager.getService(KEYSTORE_SERVICE)
+                if (ksBinder == null) {
+                    Thread.sleep(RETRY_DELAY_MS)
+                    continue
+                }
+                ksBinder.linkToDeath({ onServiceDeath() }, 0)
+
+                if (connectInterceptor(ksBinder)) break
+            } catch (e: Exception) {
+                Logger.e("Connection attempt failed", e)
+            }
+            Thread.sleep(RETRY_DELAY_MS)
+        }
+
+        Logger.i("ForgeMint daemon ready")
+        Looper.loop()
+    }
+
+    private fun connectInterceptor(ksBinder: IBinder): Boolean {
+        val ksService = IKeystoreService.Stub.asInterface(ksBinder)
+
+        val backdoor = BinderInterceptor.getBackdoor(ksBinder)
+        if (backdoor != null) {
+            registerAll(ksService, ksBinder, backdoor)
+            return true
+        }
+
+        Logger.i("Backdoor not found, attempting injection")
+        if (!performInjection()) {
+            Logger.w("Injection failed, will retry")
+            return false
+        }
+
+        Thread.sleep(500)
+        val backdoor2 = BinderInterceptor.getBackdoor(ksBinder)
+        if (backdoor2 != null) {
+            registerAll(ksService, ksBinder, backdoor2)
+            return true
+        }
+
+        Logger.w("Injection succeeded but backdoor still not available")
+        return false
+    }
+
+    private fun performInjection(): Boolean {
+        return try {
+            val pid = Runtime.getRuntime()
+                .exec(arrayOf("/system/bin/pidof", "keystore2"))
+                .inputStream.bufferedReader().readText().trim()
+            if (pid.isEmpty()) {
+                Logger.w("keystore2 not running")
+                return false
+            }
+
+            val cmd = arrayOf("$modDir/lib/libinject.so", pid, "$modDir/lib/libforgemint.so")
+            Logger.i("Running: $modDir/lib/libinject.so $pid $modDir/lib/libforgemint.so")
+
+            val process = Runtime.getRuntime().exec(cmd)
+            val exitCode = process.waitFor()
+            if (exitCode != 0) {
+                Logger.w("Injection exited with code $exitCode")
+                return false
+            }
+            Logger.i("Injection succeeded")
+            true
+        } catch (e: Exception) {
+            Logger.e("Injection failed", e)
+            false
+        }
+    }
+
+    private fun registerAll(ksService: IKeystoreService, ksBinder: IBinder, backdoor: IBinder) {
+        val ksInterceptor = Keystore2Interceptor()
+        BinderInterceptor.register(backdoor, ksBinder, ksInterceptor)
+        Logger.i("Registered Keystore2Interceptor")
+
+        val teeBinder = try {
+            ksService.getSecurityLevel(SecurityLevel.TRUSTED_ENVIRONMENT).asBinder()
+        } catch (e: Exception) {
+            Logger.e("Failed to get TEE SecurityLevel", e)
+            error(e)
+        }
+        Logger.i("Got IKeystoreSecurityLevel for TEE")
+        teeBinder.linkToDeath({ onServiceDeath() }, 0)
+
+        val kmInterceptor = KeyMintInterceptor(teeBinder, SecurityLevel.TRUSTED_ENVIRONMENT)
+        BinderInterceptor.register(backdoor, teeBinder, kmInterceptor)
+        Logger.i("Registered KeyMintInterceptor for TEE")
+
+        try {
+            val sbBinder = ksService.getSecurityLevel(SecurityLevel.STRONGBOX).asBinder()
+            val sbInterceptor = KeyMintInterceptor(sbBinder, SecurityLevel.STRONGBOX)
+            BinderInterceptor.register(backdoor, sbBinder, sbInterceptor)
+            Logger.i("Registered KeyMintInterceptor for StrongBox")
+        } catch (_: Exception) {
+            Logger.i("StrongBox not available, skipping")
+        }
+    }
+
+    private fun onServiceDeath() {
+        Logger.i("Keystore service died, restarting daemon")
+        kotlin.system.exitProcess(0)
+    }
+
+    private fun setupProviders() {
+        try {
+            Security.removeProvider("BC")
+        } catch (_: Exception) {}
+        Security.addProvider(BouncyCastleProvider())
+        Logger.i("BouncyCastle provider installed")
+
+        try {
+            Class.forName("android.security.keystore2.AndroidKeyStoreProvider")
+                .getMethod("install")
+                .invoke(null)
+            Logger.i("AndroidKeyStoreProvider installed")
+        } catch (e: Exception) {
+            Logger.w("AndroidKeyStoreProvider install skipped: ${e.message}")
+        }
+    }
+}

@@ -1,0 +1,6 @@
+id=forgemint
+name=ForgeMint
+version=$REPLACEMEVER
+versionCode=$REPLACEMEVERCODE
+author=dere3046
+description=ForgeMint KeyMint attestation hook
