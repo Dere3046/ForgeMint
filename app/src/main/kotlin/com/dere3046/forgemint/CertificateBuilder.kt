@@ -56,7 +56,8 @@ object CertificateBuilder {
             KeyPairGenerator.getInstance(algorithm, BouncyCastleProvider.PROVIDER_NAME)
                 .apply { initialize(spec) }
                 .generateKeyPair()
-        }.getOrNull()
+        }.onFailure { Logger.w("generateKeyPair: ecCurveName=${params.ecCurveName} ecCurve=${params.ecCurve} err=${it.message}", it) }
+        .getOrNull()
     }
 
     fun generateCertificateChain(
