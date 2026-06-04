@@ -24,14 +24,21 @@ object KeyboxReader {
     private var keyboxCache: ConcurrentHashMap<String, CertificateBuilder.KeyboxData>? = null
 
     fun loadKeybox(algorithm: Int? = null): CertificateBuilder.KeyboxData? {
-        val algoKey = algorithm?.let { algoToKey(it) } ?: return singleKey()
-        val cache = keyboxCache ?: reload()
-        return cache[algoKey]
+        if (algorithm != null) {
+            val algoKey = algoToKey(algorithm) ?: return null
+            val cache = keyboxCache ?: reload()
+            if (cache.isEmpty()) return null
+            return cache[algoKey]
+        }
+        return singleKey()
     }
-    private fun algoToKey(algo: Int): String = when (algo) {
+    private fun algoToKey(algo: Int): String? = when (algo) {
         Algorithm.RSA -> KeyProperties.KEY_ALGORITHM_RSA
         Algorithm.EC -> KeyProperties.KEY_ALGORITHM_EC
-        else -> ""
+        else -> {
+            Logger.w("algoToKey: unknown algorithm $algo")
+            null
+        }
     }
 
     private fun singleKey(): CertificateBuilder.KeyboxData? {
@@ -117,11 +124,14 @@ object KeyboxReader {
 
     private fun parsePemKeyPair(pem: String): KeyPair? {
         return try {
-            PEMParser(StringReader(pem.trimIndent())).use { parser ->
+            PEMParser(StringReader(cleanPem(pem))).use { parser ->
                 val obj = parser.readObject()
                 if (obj is org.bouncycastle.openssl.PEMKeyPair) {
                     JcaPEMKeyConverter().getKeyPair(obj)
-                } else null
+                } else {
+                    Logger.e("parsePemKeyPair: unexpected PEM object: ${obj?.javaClass?.name}")
+                    null
+                }
             }
         } catch (e: Exception) {
             Logger.e("Failed to parse PEM key pair", e)
@@ -131,11 +141,17 @@ object KeyboxReader {
 
     private fun parsePemCert(pem: String): X509Certificate? {
         return try {
-            PemReader(StringReader(pem.trimIndent())).use { reader ->
+            PemReader(StringReader(cleanPem(pem))).use { reader ->
                 val obj = reader.readPemObject()
                 CertificateFactory.getInstance("X.509")
                     .generateCertificate(ByteArrayInputStream(obj.content)) as X509Certificate
             }
-        } catch (_: Exception) { null }
+        } catch (e: Exception) {
+            Logger.e("Failed to parse PEM certificate", e)
+            null
+        }
     }
+
+    private fun cleanPem(pem: String): String =
+        pem.trim().lines().joinToString("\n") { it.trim() }
 }
