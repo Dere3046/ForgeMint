@@ -230,26 +230,47 @@ object AttestationBuilder {
         return DERSequence(list.toTypedArray())
     }
 
-    private fun getApplicationId(uid: Int): ByteArray {
-        val packages = try {
-            val pmBinder = ServiceManager.getService("package")
-            val pm = android.content.pm.IPackageManager.Stub.asInterface(pmBinder)
-            pm.getPackagesForUid(uid)?.toList() ?: emptyList()
-        } catch (_: Exception) { emptyList<String>() }
-
-        val sha256 = MessageDigest.getInstance("SHA-256")
-        val packageSeq = packages.map { pkg ->
-            DERSequence(arrayOf(
-                DEROctetString(pkg.toByteArray(Charsets.UTF_8)),
-                ASN1Integer(0L),
-            ))
+    private data class DigestWrapper(val digest: ByteArray) {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (javaClass != other?.javaClass) return false
+            return digest.contentEquals((other as DigestWrapper).digest)
         }
+        override fun hashCode(): Int = digest.contentHashCode()
+    }
 
+    private fun getApplicationId(uid: Int): ByteArray {
+        try {
+            val pmBinder = ServiceManager.getService("package") ?: return emptyAppId()
+            val pm = android.content.pm.IPackageManager.Stub.asInterface(pmBinder)
+            val packages = pm.getPackagesForUid(uid)?.toList() ?: return emptyAppId()
+
+            val sha256 = MessageDigest.getInstance("SHA-256")
+            val packageInfoList = mutableListOf<DERSequence>()
+            val signatureDigests = mutableSetOf<DigestWrapper>()
+
+            for (pkg in packages) {
+                packageInfoList.add(
+                    DERSequence(arrayOf(
+                        DEROctetString(pkg.toByteArray(Charsets.UTF_8)),
+                        ASN1Integer(0L),
+                    ))
+                )
+                signatureDigests.add(DigestWrapper(sha256.digest(ByteArray(0))))
+            }
+
+            return DERSequence(arrayOf(
+                DERSet(packageInfoList.toTypedArray()),
+                DERSet(signatureDigests.map { DEROctetString(it.digest) }.toTypedArray()),
+            )).encoded
+        } catch (_: Exception) { return emptyAppId() }
+    }
+
+    private fun emptyAppId(): ByteArray {
+        val sha256 = MessageDigest.getInstance("SHA-256")
         return DERSequence(arrayOf(
-            DERSet(packageSeq.toTypedArray()),
-            DERSet(packageSeq.map {
-                DEROctetString(sha256.digest(it.encoded))
-            }.toTypedArray()),
+            DERSet(arrayOf<DERSequence>()),
+            DERSet(arrayOf(DEROctetString(sha256.digest(ByteArray(0))))),
         )).encoded
     }
 
