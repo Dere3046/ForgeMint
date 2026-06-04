@@ -1,9 +1,9 @@
 package android.hardware.security.keymint;
 
 public @interface Algorithm {
-    int AES = 0;
-    int TRIPLE_DES = 1;
-    int HMAC = 2;
-    int RSA = 3;
-    int EC = 4;
+    int AES = 32;
+    int EC = 3;
+    int HMAC = 128;
+    int RSA = 1;
+    int TRIPLE_DES = 33;
 }

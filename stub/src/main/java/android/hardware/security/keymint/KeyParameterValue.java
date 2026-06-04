@@ -20,31 +20,15 @@ public class KeyParameterValue implements Parcelable {
     public static final Parcelable.Creator<KeyParameterValue> CREATOR =
             new Parcelable.Creator<>() {
                 public KeyParameterValue createFromParcel(Parcel in) {
-                    KeyParameterValue v = new KeyParameterValue();
-                    int disc = in.readInt();
-                    switch (disc) {
-                        case 0: v.algorithm = in.readInt(); break;
-                        case 1: v.integer = in.readInt(); break;
-                        case 2: v.longInteger = in.readLong(); break;
-                        case 3: v.blob = in.createByteArray(); break;
-                        case 4: v.boolValue = in.readInt() != 0; break;
-                        case 5: v.dateTime = in.readLong(); break;
-                        case 6: v.ecCurve = in.readInt(); break;
-                        case 7: v.origin = in.readInt(); break;
-                        case 8: v.blockMode = in.readInt(); break;
-                        case 9: v.paddingMode = in.readInt(); break;
-                        case 10: v.keyPurpose = in.readInt(); break;
-                        case 11: v.digest = in.readInt(); break;
-                    }
-                    return v;
+                    throw new UnsupportedOperationException("STUB!");
                 }
                 public KeyParameterValue[] newArray(int size) {
-                    return new KeyParameterValue[size];
+                    throw new UnsupportedOperationException("STUB!");
                 }
             };
 
     @Override
-    public int describeContents() { return 0; }
+    public int describeContents() { throw new UnsupportedOperationException("STUB!"); }
 
     @Override
     public void writeToParcel(Parcel dest, int flags) {

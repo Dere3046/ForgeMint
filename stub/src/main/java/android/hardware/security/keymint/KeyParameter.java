@@ -10,18 +10,15 @@ public class KeyParameter implements Parcelable {
     public static final Parcelable.Creator<KeyParameter> CREATOR =
             new Parcelable.Creator<>() {
                 public KeyParameter createFromParcel(Parcel in) {
-                    KeyParameter kp = new KeyParameter();
-                    kp.tag = in.readInt();
-                    kp.value = KeyParameterValue.CREATOR.createFromParcel(in);
-                    return kp;
+                    throw new UnsupportedOperationException("STUB!");
                 }
                 public KeyParameter[] newArray(int size) {
-                    return new KeyParameter[size];
+                    throw new UnsupportedOperationException("STUB!");
                 }
             };
 
     @Override
-    public int describeContents() { return 0; }
+    public int describeContents() { throw new UnsupportedOperationException("STUB!"); }
 
     @Override
     public void writeToParcel(Parcel dest, int flags) {
