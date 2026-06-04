@@ -20,19 +20,21 @@ object AttestationBuilder {
     val bootHash: ByteArray by lazy { initBootHash() }
 
     val osVersion: Int by lazy {
-        val release = Build.VERSION.RELEASE ?: "15"
-        val parts = release.split(".").map { it.toIntOrNull() ?: 0 }
-        when (parts.size) {
-            1 -> parts[0] * 10000
-            2 -> parts[0] * 10000 + parts[1] * 100
-            3 -> parts[0] * 10000 + parts[1] * 100 + parts[2]
-            else -> 160000
+        DeviceAttestationService.cachedData?.osVersion ?: run {
+            val release = Build.VERSION.RELEASE ?: "15"
+            val parts = release.split(".").map { it.toIntOrNull() ?: 0 }
+            when (parts.size) {
+                1 -> parts[0] * 10000
+                2 -> parts[0] * 10000 + parts[1] * 100
+                3 -> parts[0] * 10000 + parts[1] * 100 + parts[2]
+                else -> 160000
+            }
         }
     }
 
     fun getAttestVersion(securityLevel: Int): Int {
         if (securityLevel == android.hardware.security.keymint.SecurityLevel.STRONGBOX) return 300
-        return when {
+        return DeviceAttestationService.cachedData?.attestVersion ?: when {
             Build.VERSION.SDK_INT >= 36 -> 400
             Build.VERSION.SDK_INT >= 33 -> 300
             Build.VERSION.SDK_INT >= 31 -> 200
@@ -104,6 +106,20 @@ object AttestationBuilder {
         val custom = ConfigManager.getPatchLevelForUid(uid)
         val value = custom?.system ?: custom?.all
         if (value != null) return value
+        DeviceAttestationService.cachedData?.osPatchLevel?.let { return it }
+        return parseOsPatchFromBuild()
+    }
+
+    fun getPatchLevelLong(uid: Int): Int {
+        val custom = ConfigManager.getPatchLevelForUid(uid)
+        val value = custom?.vendor ?: custom?.boot ?: custom?.all
+        if (value != null) return value
+        DeviceAttestationService.cachedData?.vendorPatchLevel?.let { return it }
+        DeviceAttestationService.cachedData?.bootPatchLevel?.let { return it }
+        return parseLongPatchFromBuild()
+    }
+
+    private fun parseOsPatchFromBuild(): Int {
         val patch = Build.VERSION.SECURITY_PATCH ?: "2026-06"
         val parts = patch.split("-")
         if (parts.size == 2) {
@@ -114,10 +130,7 @@ object AttestationBuilder {
         return 26206
     }
 
-    fun getPatchLevelLong(uid: Int): Int {
-        val custom = ConfigManager.getPatchLevelForUid(uid)
-        val value = custom?.vendor ?: custom?.boot ?: custom?.all
-        if (value != null) return value
+    private fun parseLongPatchFromBuild(): Int {
         val patch = Build.VERSION.SECURITY_PATCH ?: "2026-06-01"
         val digits = patch.replace("-", "")
         return digits.take(8).toIntOrNull() ?: 20260601
@@ -317,6 +330,7 @@ object AttestationBuilder {
             m.invoke(null, "ro.boot.avb_modules_hash", "") as String
         } catch (_: Exception) { "" }
         if (value.isNotEmpty()) return hexStringToByteArray(value)
+        DeviceAttestationService.cachedData?.moduleHash?.let { return it }
         return randomBytes(32)
     }
 
@@ -331,6 +345,7 @@ object AttestationBuilder {
             m.invoke(null, "ro.boot.vbmeta.public_key_digest", "") as String
         } catch (_: Exception) { "" }
         if (value.isNotEmpty() && value.length >= 64) return hexStringToByteArray(value)
+        DeviceAttestationService.cachedData?.verifiedBootKey?.let { return it }
         return randomBytes(32)
     }
 
@@ -341,6 +356,7 @@ object AttestationBuilder {
             m.invoke(null, "ro.boot.vbmeta.digest", "") as String
         } catch (_: Exception) { "" }
         if (value.isNotEmpty() && value.length >= 64) return hexStringToByteArray(value)
+        DeviceAttestationService.cachedData?.verifiedBootHash?.let { return it }
         return randomBytes(32)
     }
 

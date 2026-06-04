@@ -27,8 +27,10 @@ object App {
         setupProviders()
         ConfigManager.initialize()
         ConfigManager.checkTeeStatus()
-
         initBootProperties()
+
+        DeviceAttestationService.cachedData
+        Logger.i("TEE attestation cached=${DeviceAttestationService.cachedData != null}")
 
         while (true) {
             try {
