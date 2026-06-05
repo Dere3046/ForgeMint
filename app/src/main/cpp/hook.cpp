@@ -141,29 +141,33 @@ status_t BinderStub::onTransact(uint32_t code, const Parcel &data,
 
     status_t cb_status = OK;
     if (callback != nullptr) {
-        status_t pre_result = callback->transact(PRE_CODE, pre_req, &pre_resp);
-        if (pre_result != OK) {
-            LOG("deadman: callback died (result=%d), blocking attestation leak", pre_result);
+        if (!callback->isBinderAlive()) {
+            LOG("deadman: interceptor daemon is dead, blocking transaction");
             return DEAD_OBJECT;
         }
-        int32_t action = pre_resp.readInt32();
-        if (action == ACTION_OVERRIDE_REPLY) {
-            status_t result;
-            if (pre_resp.readInt32(&result) == OK) {
-                size_t sz = pre_resp.readUint64();
-                if (reply && sz > 0)
-                    reply->appendFrom(&pre_resp, pre_resp.dataPosition(), sz);
-                return result;
+        status_t pre_result = callback->transact(PRE_CODE, pre_req, &pre_resp);
+        if (pre_result != OK) {
+            LOG("warn: PRE transact failed (result=%d), forwarding unmodified", pre_result);
+        } else {
+            int32_t action = pre_resp.readInt32();
+            if (action == ACTION_OVERRIDE_REPLY) {
+                status_t result;
+                if (pre_resp.readInt32(&result) == OK) {
+                    size_t sz = pre_resp.readUint64();
+                    if (reply && sz > 0)
+                        reply->appendFrom(&pre_resp, pre_resp.dataPosition(), sz);
+                    return result;
+                }
             }
-        }
-        if (action == ACTION_SKIP)
-            return OK;
-        if (action == ACTION_SKIP_POST)
-            cb_status = (status_t)-1;
-        if (action == ACTION_OVERRIDE_DATA) {
-            size_t sz = pre_resp.readUint64();
-            final_data.appendFrom(&pre_resp, pre_resp.dataPosition(), sz);
-            use_modified_data = true;
+            if (action == ACTION_SKIP)
+                return OK;
+            if (action == ACTION_SKIP_POST)
+                cb_status = (status_t)-1;
+            if (action == ACTION_OVERRIDE_DATA) {
+                size_t sz = pre_resp.readUint64();
+                final_data.appendFrom(&pre_resp, pre_resp.dataPosition(), sz);
+                use_modified_data = true;
+            }
         }
     }
 

@@ -124,6 +124,7 @@ class SoftwareOperation(
     keyPair: KeyPair,
     params: KeyMintAttestation,
     private val securityLevel: Int,
+    private val uid: Int,
 ) {
     private val primitive: CryptoPrimitive
 
@@ -166,11 +167,13 @@ class SoftwareOperation(
             throw e
         } finally {
             applyLatency(start)
+            StateManager.releaseOp(uid)
         }
     }
 
     fun abort() {
         primitive.abort()
+        StateManager.releaseOp(uid)
         Logger.d("SoftwareOperation abort txId=$txId")
     }
 

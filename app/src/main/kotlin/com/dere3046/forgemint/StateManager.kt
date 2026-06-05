@@ -25,27 +25,22 @@ object StateManager {
 
     private val cache = ConcurrentHashMap<String, KeyEntry>()
     private val patchedChains = ConcurrentHashMap<KeyIdentifier, Array<Certificate>>()
-    private val activeOpsByUid = ConcurrentHashMap<Int, java.util.LinkedList<Long>>()
+    private val opCounters = ConcurrentHashMap<Int, java.util.concurrent.atomic.AtomicInteger>()
 
     private const val MAX_OPS_PER_UID = 15
 
-    fun tryAcquireOperation(uid: Int, opId: Long): Boolean {
-        val list = activeOpsByUid.getOrPut(uid) { java.util.LinkedList() }
-        synchronized(list) {
-            list.removeIf { it < System.currentTimeMillis() - 30_000 }
-            if (list.size >= MAX_OPS_PER_UID) {
-                Logger.w("LRU: UID=$uid has ${list.size} active ops, rejecting op=$opId")
-                return false
-            }
-            list.add(opId)
-            return true
+    fun acquireOp(uid: Int): Boolean {
+        val counter = opCounters.getOrPut(uid) { java.util.concurrent.atomic.AtomicInteger(0) }
+        if (counter.incrementAndGet() > MAX_OPS_PER_UID) {
+            counter.decrementAndGet()
+            Logger.w("LRU: UID=$uid op limit ($MAX_OPS_PER_UID) reached")
+            return false
         }
+        return true
     }
 
-    fun releaseOperation(uid: Int, opId: Long) {
-        activeOpsByUid[uid]?.let { list ->
-            synchronized(list) { list.remove(opId) }
-        }
+    fun releaseOp(uid: Int) {
+        opCounters[uid]?.decrementAndGet()
     }
 
     fun store(entry: KeyEntry) {
@@ -77,7 +72,7 @@ object StateManager {
         val count = cache.size
         cache.clear()
         patchedChains.clear()
-        activeOpsByUid.clear()
+        opCounters.clear()
         Logger.i("Cleared all state ($count entries)")
     }
 

@@ -203,7 +203,12 @@ class KeyMintInterceptor(
 
             Logger.i("createOperation for generated key alias=${entry.alias} nspace=${keyDescriptor.nspace}")
 
-            val operation = SoftwareOperation(txId, entry.keyPair, parsedParams, securityLevel)
+            if (!StateManager.acquireOp(uid)) {
+                Logger.w("LRU: rejecting createOperation for UID=$uid (op limit)")
+                return TransactionResult.Skip
+            }
+
+            val operation = SoftwareOperation(txId, entry.keyPair, parsedParams, securityLevel, uid)
             val binder = SoftwareOperationBinder(operation)
             val response = android.system.keystore2.CreateOperationResponse().apply {
                 iOperation = binder

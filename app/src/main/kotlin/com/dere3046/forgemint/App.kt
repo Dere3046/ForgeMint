@@ -23,11 +23,10 @@ object App {
         modDir = System.getProperty("moddir") ?: "/data/adb/modules/forgemint"
         Logger.i("ForgeMint daemon starting (moddir=$modDir)")
 
+        KmsgLogger.init()
         prepareEnvironment()
         setupProviders()
         ConfigManager.initialize()
-        BootStateManager.apply()
-        cleanupDiagnosticFiles()
         initBootProperties()
 
         while (true) {
