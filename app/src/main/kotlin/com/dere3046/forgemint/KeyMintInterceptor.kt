@@ -380,15 +380,22 @@ class KeyMintInterceptor(
             alias = null
             blob = null
         }
-        val metadata = KeyMetadata().apply {
-            keySecurityLevel = securityLevel
-            key = descriptor
-            modificationTimeMs = System.currentTimeMillis()
-            authorizations = buildAuthorizations(params, uid)
-            certificate = chain[0].encoded
-            certificateChain = if (chain.size > 1) {
-                chain.drop(1).flatMap { it.encoded.toList() }.toByteArray()
-            } else null
+        val metadata = Parcel.obtain().let { p ->
+            val m = KeyMetadata().apply {
+                keySecurityLevel = securityLevel
+                key = descriptor
+                modificationTimeMs = System.currentTimeMillis()
+                authorizations = buildAuthorizations(params, uid)
+                certificate = chain[0].encoded
+                certificateChain = if (chain.size > 1) {
+                    chain.drop(1).flatMap { it.encoded.toList() }.toByteArray()
+                } else null
+            }
+            p.writeTypedObject(m, 0)
+            p.setDataPosition(0)
+            val normalized = p.readTypedObject(KeyMetadata.CREATOR) ?: m
+            p.recycle()
+            normalized
         }
 
         StateManager.store(StateManager.KeyEntry(

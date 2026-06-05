@@ -19,7 +19,7 @@ object StateManager {
         val metadata: KeyMetadata,
         val keyPair: KeyPair,
         val securityLevel: Int,
-        val securityLevelBinder: IKeystoreSecurityLevel,
+        val securityLevelBinder: IKeystoreSecurityLevel?,
         val certChain: List<X509Certificate>,
     )
 
@@ -45,6 +45,7 @@ object StateManager {
 
     fun store(entry: KeyEntry) {
         cache[key(entry.uid, entry.alias)] = entry
+        GeneratedKeyPersistence.store(entry)
     }
 
     fun lookup(uid: Int, alias: String): KeyEntry? = cache[key(uid, alias)]
@@ -56,6 +57,33 @@ object StateManager {
     fun remove(uid: Int, alias: String) {
         cache.remove(key(uid, alias))
         patchedChains.remove(KeyIdentifier(uid, alias))
+        GeneratedKeyPersistence.remove(uid, alias)
+    }
+
+    private var keysLoaded = false
+
+    fun loadPersistedKeys(ksService: android.system.keystore2.IKeystoreService) {
+        if (keysLoaded) return
+        keysLoaded = true
+        var count = 0
+        for (lk in GeneratedKeyPersistence.loadAll()) {
+            if (lk.metadata == null) continue
+            val binder = try {
+                ksService.getSecurityLevel(lk.securityLevel)
+            } catch (_: Exception) { null }
+            store(KeyEntry(
+                uid = lk.uid,
+                alias = lk.alias,
+                nspace = lk.nspace,
+                metadata = lk.metadata,
+                keyPair = lk.keyPair,
+                securityLevel = lk.securityLevel,
+                securityLevelBinder = binder,
+                certChain = lk.certChain,
+            ))
+            count++
+        }
+        if (count > 0) Logger.i("Loaded $count persisted keys")
     }
 
     fun listForUid(uid: Int): List<KeyEntry> {

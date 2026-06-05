@@ -158,6 +158,8 @@ object App {
         BinderInterceptor.register(backdoor, ksBinder, ksInterceptor)
         Logger.i("Registered Keystore2Interceptor")
 
+        StateManager.loadPersistedKeys(ksService)
+
         val teeBinder = try {
             ksService.getSecurityLevel(SecurityLevel.TRUSTED_ENVIRONMENT).asBinder()
         } catch (e: Exception) {

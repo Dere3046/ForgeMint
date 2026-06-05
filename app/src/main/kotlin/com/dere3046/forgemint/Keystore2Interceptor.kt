@@ -91,12 +91,16 @@ class Keystore2Interceptor : BinderInterceptor() {
             val alias = descriptor.alias ?: return TransactionResult.Continue
 
             val entry = StateManager.lookup(uid, alias) ?: return TransactionResult.Continue
+            val binder = entry.securityLevelBinder ?: run {
+                Logger.w("getKeyEntry alias=$alias UID=$uid → missing security level binder")
+                return TransactionResult.Continue
+            }
 
             Logger.i("getKeyEntry alias=$alias UID=$uid → returning generated key")
 
             val response = KeyEntryResponse().apply {
                 metadata = entry.metadata
-                iSecurityLevel = entry.securityLevelBinder
+                iSecurityLevel = binder
             }
             val reply = Parcel.obtain()
             reply.writeNoException()
