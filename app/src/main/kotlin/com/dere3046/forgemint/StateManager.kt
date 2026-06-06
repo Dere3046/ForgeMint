@@ -51,6 +51,7 @@ object StateManager {
     private val activeOps = ConcurrentHashMap<Int, java.util.concurrent.ConcurrentLinkedDeque<SoftwareOperation>>()
 
     private const val MAX_OPS_PER_UID = 15
+    private const val STRONGBOX_MAX_OPS = 4
 
     data class SoftwareGrant(
         val granteeUid: Int,
@@ -68,11 +69,28 @@ object StateManager {
         return nspace
     }
 
+    fun acquireOp(uid: Int, operation: SoftwareOperation, securityLevel: Int = android.hardware.security.keymint.SecurityLevel.TRUSTED_ENVIRONMENT) {
+        val maxOps = if (securityLevel == android.hardware.security.keymint.SecurityLevel.STRONGBOX) STRONGBOX_MAX_OPS else MAX_OPS_PER_UID
+        val ops = activeOps.computeIfAbsent(uid) { java.util.concurrent.ConcurrentLinkedDeque() }
+        ops.removeIf { it.finalized }
+        while (ops.size >= maxOps) {
+            val oldest = ops.pollFirst() ?: break
+            if (!oldest.finalized) {
+                Logger.w("LRU: aborting oldest unfinished op for uid=$uid (active=${ops.size}/$maxOps)")
+                oldest.abort()
+            }
+        }
+        ops.addLast(operation)
+    }
+
     fun resolveGrant(nspace: Long, callerUid: Int): KeyIdentifier? {
         val grant = grantMap[nspace] ?: return null
         if (grant.granteeUid != callerUid) return null
-        if (cache.values.none { it.uid == grant.ownerKeyId.uid && it.alias == grant.ownerKeyId.alias }) return null
-        return grant.ownerKeyId
+        val ownerKey = grant.ownerKeyId
+        val inCache = cache.values.any { it.uid == ownerKey.uid && it.alias == ownerKey.alias }
+        val inTeeResponses = teeResponses.containsKey(ownerKey)
+        if (!inCache && !inTeeResponses) return null
+        return ownerKey
     }
 
     fun isGrantNspaceKnown(nspace: Long): Boolean = grantMap.containsKey(nspace)

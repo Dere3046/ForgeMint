@@ -259,7 +259,7 @@ class KeyMintInterceptor(
             Logger.d("createOperation for generated key alias=${entry.alias} nspace=${keyDescriptor.nspace} algo=${parsedParams.algorithm} purpose=${parsedParams.purpose.firstOrNull()}")
 
             val operation = SoftwareOperation(txId, entry.keyPair, entry.secretKey, parsedParams, securityLevel, uid)
-            StateManager.acquireOp(uid, operation)
+            StateManager.acquireOp(uid, operation, securityLevel)
             val binder = SoftwareOperationBinder(operation)
             val response = android.system.keystore2.CreateOperationResponse().apply {
                 iOperation = binder
