@@ -131,11 +131,26 @@ androidComponents {
                 into(tempModuleDir)
             }
 
+        val generateSha256Task =
+            tasks.register("generateSha256${capitalized}") {
+                group = "ForgeMint Module Packaging"
+                description = "Generates .sha256 sidecar files for all module files."
+                dependsOn(prepareModuleFilesTask)
+                doLast {
+                    val dir = tempModuleDir.get().asFile
+                    val proc = ProcessBuilder("sh", "-c",
+                        "find . -type f ! -name '*.sha256' | while read f; do sha256sum \"\$f\" | cut -d' ' -f1 > \"\${f}.sha256\"; done"
+                    ).directory(dir).inheritIO().start()
+                    proc.waitFor()
+                    if (proc.exitValue() != 0) throw RuntimeException("sha256 generation failed")
+                }
+            }
+
         val zipTask =
             tasks.register<Zip>("zip${capitalized}") {
                 group = "ForgeMint Module Packaging"
                 description = "Creates flashable zip for ${variant.name}."
-                dependsOn(prepareModuleFilesTask)
+                dependsOn(generateSha256Task)
 
                 archiveFileName.set(zipFileName)
                 destinationDirectory.set(rootProject.projectDir.resolve("out"))

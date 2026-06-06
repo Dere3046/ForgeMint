@@ -33,6 +33,11 @@ esac
 VERSION=$(grep_prop version "$TMPDIR/module.prop")
 ui_print "- ForgeMint $VERSION on $ARCH"
 
+ui_print "- Verifying module integrity"
+unzip -o "$ZIPFILE" "verify.sh" -d "$TMPDIR" >&2
+source "$TMPDIR/verify.sh"
+verify_module "$ZIPFILE"
+
 mkdir -p "$MODPATH/lib"
 ui_print "- Extracting module files"
 unzip -o "$ZIPFILE" "module.prop" -d "$MODPATH" >&2
