@@ -192,8 +192,12 @@ object AttestationBuilder {
         if (file.exists() && file.length() == 32L) {
             file.readBytes()
         } else {
-            Logger.w("hbk not found, generating ephemeral HBK")
-            ByteArray(32).also { SecureRandom().nextBytes(it) }
+            Logger.w("hbk invalid or missing, regenerating")
+            val newHbk = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
+            try { file.writeBytes(newHbk) } catch (e: Exception) {
+                Logger.e("hbk write failed", e)
+            }
+            newHbk
         }
     }
 
