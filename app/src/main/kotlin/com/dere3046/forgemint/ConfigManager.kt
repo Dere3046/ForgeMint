@@ -56,6 +56,7 @@ object ConfigManager {
 
     @Volatile private var packageModes = mapOf<String, Mode>()
     @Volatile private var isTeBroken: Boolean? = null
+    fun isTeeBroken(): Boolean = isTeBroken == true
     @Volatile private var globalPatchLevel: CustomPatchLevel? = null
     private val uidPackageCache = ConcurrentHashMap<Int, List<String>>()
 
