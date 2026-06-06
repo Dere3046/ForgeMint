@@ -117,6 +117,9 @@ object ConfigManager {
             var ven: Int? = null
             var boo: Int? = null
             var all: Int? = null
+            var sysProp = false
+            var venProp = false
+            var bootProp = false
 
             for (line in patchFile.readLines()) {
                 val trimmed = line.trim()
@@ -125,15 +128,20 @@ object ConfigManager {
                 if (eqIdx < 0) continue
                 val key = trimmed.substring(0, eqIdx).trim().lowercase()
                 val value = trimmed.substring(eqIdx + 1).trim()
+                val isProp = value == "prop"
                 val parsed = parsePatchValue(value)
                 when (key) {
-                    "system" -> sys = parsed
-                    "vendor" -> ven = parsed
-                    "boot" -> boo = parsed
-                    "all" -> all = parsed
+                    "system" -> { sys = parsed; sysProp = isProp }
+                    "vendor" -> { ven = parsed; venProp = isProp }
+                    "boot" -> { boo = parsed; bootProp = isProp }
+                    "all" -> { all = parsed; sysProp = isProp; venProp = isProp; bootProp = isProp }
                 }
             }
-            if (sys != null || ven != null || boo != null || all != null) {
+
+            if (sysProp && !venProp) ven = null
+            if (sysProp && !bootProp) boo = null
+
+            if (sys != null || ven != null || boo != null || all != null || sysProp || venProp || bootProp) {
                 globalPatchLevel = CustomPatchLevel(sys, ven, boo, all)
                 Logger.i("Loaded global patch level: system=${sys} vendor=${ven} boot=${boo} all=${all}")
             }
@@ -142,12 +150,13 @@ object ConfigManager {
         }
     }
 
-    private fun parsePatchValue(value: String): Int {
+    private fun parsePatchValue(value: String): Int? {
+        if (value == "prop") return null
         val digits = value.replace("-", "")
         return when (digits.length) {
-            8 -> digits.take(8).toIntOrNull() ?: 0
-            6 -> "${digits.take(6)}01".toIntOrNull() ?: 0
-            else -> 0
+            8 -> digits.take(8).toIntOrNull()
+            6 -> "${digits.take(6)}01".toIntOrNull()
+            else -> null
         }
     }
 
