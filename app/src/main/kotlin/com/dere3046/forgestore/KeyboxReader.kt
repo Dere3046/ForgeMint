@@ -46,6 +46,7 @@ object KeyboxReader {
             val cache = keyboxCache ?: reload()
             if (cache.isEmpty()) return null
             return cache[algoKey]
+                ?: if (ConfigManager.isFallbackEnabled) cache.values.firstOrNull() else null
         }
         return singleKey()
     }

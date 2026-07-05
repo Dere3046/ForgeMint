@@ -383,13 +383,32 @@ object AttestationBuilder {
             val m = cls.getMethod("get", String::class.java, String::class.java)
             m.invoke(null, "ro.boot.avb_modules_hash", "") as String
         } catch (_: Exception) { "" }
-        if (value.isNotEmpty()) return hexStringToByteArray(value)
+        if (value.isNotEmpty()) {
+            val bytes = hexStringToByteArray(value)
+            persistBootFile("module_hash.bin", bytes)
+            return bytes
+        }
         DeviceAttestationService.cachedData?.moduleHash?.let { return it }
-        return randomBytes(32)
+        readBootFile("module_hash.bin")?.let { return it }
+        return randomBytes(32).also { persistBootFile("module_hash.bin", it) }
     }
 
     private fun randomBytes(size: Int): ByteArray {
         return java.security.SecureRandom().run { ByteArray(size).also { nextBytes(it) } }
+    }
+
+    private fun persistBootFile(name: String, value: ByteArray) {
+        try {
+            java.io.File("/data/adb/forgestore", name).writeBytes(value)
+        } catch (_: Exception) {}
+    }
+
+    private fun readBootFile(name: String): ByteArray? {
+        try {
+            val file = java.io.File("/data/adb/forgestore", name)
+            if (file.exists() && file.length() == 32L) return file.readBytes()
+        } catch (_: Exception) {}
+        return null
     }
 
     private fun initBootKey(): ByteArray {
@@ -398,9 +417,14 @@ object AttestationBuilder {
             val m = cls.getMethod("get", String::class.java, String::class.java)
             m.invoke(null, "ro.boot.vbmeta.public_key_digest", "") as String
         } catch (_: Exception) { "" }
-        if (value.isNotEmpty() && value.length >= 64) return hexStringToByteArray(value)
+        if (value.isNotEmpty() && value.length >= 64) {
+            val bytes = hexStringToByteArray(value)
+            persistBootFile("boot_key.bin", bytes)
+            return bytes
+        }
         DeviceAttestationService.cachedData?.verifiedBootKey?.let { return it }
-        return randomBytes(32)
+        readBootFile("boot_key.bin")?.let { return it }
+        return randomBytes(32).also { persistBootFile("boot_key.bin", it) }
     }
 
     private fun initBootHash(): ByteArray {
@@ -409,9 +433,14 @@ object AttestationBuilder {
             val m = cls.getMethod("get", String::class.java, String::class.java)
             m.invoke(null, "ro.boot.vbmeta.digest", "") as String
         } catch (_: Exception) { "" }
-        if (value.isNotEmpty() && value.length >= 64) return hexStringToByteArray(value)
+        if (value.isNotEmpty() && value.length >= 64) {
+            val bytes = hexStringToByteArray(value)
+            persistBootFile("boot_hash.bin", bytes)
+            return bytes
+        }
         DeviceAttestationService.cachedData?.verifiedBootHash?.let { return it }
-        return randomBytes(32)
+        readBootFile("boot_hash.bin")?.let { return it }
+        return randomBytes(32).also { persistBootFile("boot_hash.bin", it) }
     }
 
     private fun hexStringToByteArray(s: String): ByteArray {

@@ -371,7 +371,7 @@ class KeyMintInterceptor(
 
             Logger.d("createOperation for generated key alias=${entry.alias} nspace=${keyDescriptor.nspace} algo=${parsedParams.algorithm} purpose=${parsedParams.purpose.firstOrNull()} secLevel=$securityLevel")
 
-            val maxUsage = parsedParams.maxUsesPerBoot
+            val maxUsage = keyParams.maxUsesPerBoot
             val keyId = StateManager.KeyIdentifier(uid, entry.alias)
             if (maxUsage != null && maxUsage > 0) {
                 val counter = usageCounters.computeIfAbsent(keyId) {
