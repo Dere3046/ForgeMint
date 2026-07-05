@@ -1,4 +1,4 @@
-#!/sbin/sh
+#!/system/bin/sh
 # Copyright (C) 2026  TheGeniusClub
 #
 # This program is free software; you can redistribute it and/or modify
