@@ -230,7 +230,6 @@ static uintptr_t remote_call(int pid, struct user_regs_struct *regs,
     return remote_post_call(pid, regs, ret_addr);
 }
 
-/* Generate random hex string for socket path */
 static void gen_rand(char *buf, int len)
 {
     int fd = open("/dev/urandom", O_RDONLY);
@@ -275,7 +274,6 @@ static void set_status_ok(void)
     free(out);
 }
 
-/* Transfer library FD via SCM_RIGHTS, return transferred FD or -1 */
 static int transfer_fd(int pid, const char *lib_path,
                         struct user_regs_struct *regs, uintptr_t ret_addr)
 {
@@ -293,14 +291,12 @@ static int transfer_fd(int pid, const char *lib_path,
     if (!sock_f || !bind_f || !recv_f || !close_f || !errno_f) {
         LOGE("resolve libc funcs failed"); close(local_sock); close(lib_fd); return -1; }
 
-    /* Create remote socket */
     uintptr_t a[] = {AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0};
     int remote_fd = (int)remote_call(pid, regs, sock_f, ret_addr, 3, a);
     if (remote_fd <= 0) {
         LOGE("remote socket failed"); close(local_sock); close(lib_fd); return -1; }
     LOG("remote socket fd=%d", remote_fd);
 
-    /* Random abstract socket path */
     char magic[16]; gen_rand(magic, 12);
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
@@ -322,26 +318,22 @@ static int transfer_fd(int pid, const char *lib_path,
         close(local_sock); close(lib_fd); return -1;
     }
 
-    /* Push cmsg_buf to remote FIRST, then set msg_control to remote addr */
     char cmsg_buf[CMSG_SPACE(sizeof(int))] = {0};
     uintptr_t remote_cmsg = push_memory(pid, regs, &cmsg_buf, sizeof(cmsg_buf));
     if (!remote_cmsg) { LOGE("push cmsg failed"); close(local_sock); close(lib_fd); return -1; }
 
-    /* Build msghdr pointing to remote cmsg_buf */
     struct msghdr mh; memset(&mh, 0, sizeof(mh));
     mh.msg_control = (void*)remote_cmsg;
     mh.msg_controllen = sizeof(cmsg_buf);
     uintptr_t remote_mh = push_memory(pid, regs, &mh, sizeof(mh));
     if (!remote_mh) { LOGE("push mh failed"); close(local_sock); close(lib_fd); return -1; }
 
-    /* Start remote recvmsg (blocks in kernel until the SCM_RIGHTS datagram arrives) */
     uintptr_t rargs[] = {(uintptr_t)remote_fd, remote_mh, MSG_WAITALL};
     if (!remote_pre_call(pid, regs, recv_f, ret_addr, 3, rargs)) {
         LOGE("pre_call recvmsg failed"); close(local_sock); close(lib_fd); return -1; }
     LOG("remote recvmsg started fd=%d", remote_fd);
     usleep(50000);
 
-    /* Local sendmsg — must specify destination address */
     memset(&cmsg_buf, 0, sizeof(cmsg_buf));
     memset(&mh, 0, sizeof(mh));
     mh.msg_name = &addr;
@@ -375,7 +367,6 @@ static int transfer_fd(int pid, const char *lib_path,
         LOGE("remote recvmsg returned %zd errno=%d", (ssize_t)(intptr_t)rr, rerr);
     }
 
-    /* Read remote cmsg_buf back, parse with local msghdr */
     ssize_t rr_bytes = read_proc_mem(pid, remote_cmsg, &cmsg_buf, sizeof(cmsg_buf));
     LOG("remote cmsg read=%zd addr=%zx", rr_bytes, remote_cmsg);
     LOG("remote cmsg raw: %02x %02x %02x %02x %02x %02x %02x %02x",
@@ -414,7 +405,6 @@ static int do_inject(int pid, const char *lib_path)
     uintptr_t ret_addr = find_module_base(pid, "libc.so");
     if (!ret_addr) { goto cleanup; }
 
-    /* Try FD transfer + android_dlopen_ext */
     uintptr_t a_dext = find_func_addr(pid, "libdl.so", "android_dlopen_ext");
     if (a_dext) {
         LOG("trying FD transfer");
@@ -469,41 +459,11 @@ static int do_inject(int pid, const char *lib_path)
         }
     }
 
-#if 0
-    /* Fallback: path-based dlopen — requires keystore module execute permission, removed for security */
-    if (handle == 0) {
-        uintptr_t dl_f = find_func_addr(pid, "libdl.so", "dlopen");
-        if (!dl_f) dl_f = find_func_addr(pid, "linker64", "dlopen");
-        if (dl_f) {
-            struct user_regs_struct regs;
-            get_regs(pid, &regs);
-            uintptr_t path_addr = push_memory(pid, &regs, lib_path, strlen(lib_path) + 1);
-            if (path_addr) {
-                uintptr_t args[] = {path_addr, RTLD_NOW};
-                handle = remote_call(pid, &regs, dl_f, ret_addr, 2, args);
-                LOG("path dlopen returned %p", (void*)handle);
-                if (handle == 0) {
-                    uintptr_t dl_e = find_func_addr(pid, "libdl.so", "dlerror");
-                    if (dl_e) {
-                        uintptr_t err_str = remote_call(pid, &regs, dl_e, ret_addr, 0, NULL);
-                        if (err_str > 0 && err_str != (uintptr_t)-1) {
-                            char buf[256] = {};
-                            read_proc_mem(pid, err_str, buf, sizeof(buf)-1);
-                            LOG("dlerror: %s", buf);
-                        }
-                    }
-                }
-            }
-        }
-    }
-#endif
-
 cleanup:
     set_regs(pid, &backup);
     return handle > 0 && handle != (uintptr_t)-1 ? 0 : -1;
 }
 
-/* One-shot injection. Returns 0 on success, -1 on failure. service.sh retries. */
 static int inject_library(int pid, const char *lib_path)
 {
     LOG("inject pid=%d", pid);
