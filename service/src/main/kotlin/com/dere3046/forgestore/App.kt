@@ -15,6 +15,7 @@
 
 package com.dere3046.forgestore
 
+import android.content.Context
 import android.os.Build
 import android.os.IBinder
 import android.os.Looper
@@ -36,6 +37,7 @@ object App {
     private val processName by lazy { if (isOldKeystore) "keystore" else "keystore2" }
 
     private lateinit var modDir: String
+    private lateinit var systemContext: Context
     private var retryCount = 0
     private var injectionAttempted = false
 
@@ -53,6 +55,7 @@ object App {
         ConfigManager.initialize()
         Harvester.initialize()
         initBootProperties()
+        SoterProcessSupervisor.start(systemContext)
 
         while (true) {
             try {
@@ -89,7 +92,7 @@ object App {
         try {
             val atClass = Class.forName("android.app.ActivityThread")
             val activityThread = atClass.getMethod("systemMain").invoke(null)
-            val systemContext = atClass.getMethod("getSystemContext").invoke(activityThread)
+            systemContext = atClass.getMethod("getSystemContext").invoke(activityThread) as Context
             val app = Class.forName("android.app.Application").getDeclaredConstructor().newInstance()
             val attachMethod = Class.forName("android.content.ContextWrapper")
                 .getDeclaredMethod("attachBaseContext", Class.forName("android.content.Context"))
