@@ -1,5 +1,6 @@
 package com.dere3046.forgestore
 
+import android.hardware.security.keymint.SecurityLevel
 import android.os.Build
 import android.os.SystemProperties
 import java.io.ByteArrayOutputStream
@@ -53,7 +54,8 @@ object AndroidDeviceUtils {
         get() = attestVersionMap[Build.VERSION.SDK_INT]
 
     fun getAttestVersion(securityLevel: Int): Int {
-        vintfKeyMintVersion?.let { version ->
+        val vintf = if (securityLevel == SecurityLevel.STRONGBOX) vintfStrongBoxKeyMintVersion else vintfKeyMintVersion
+        vintf?.let { version ->
             Logger.d("attestVersion=${version.attestationVersion} source=vintf securityLevel=$securityLevel")
             return version.attestationVersion
         }
@@ -71,7 +73,8 @@ object AndroidDeviceUtils {
     }
 
     fun getKeymasterVersion(securityLevel: Int): Int {
-        vintfKeyMintVersion?.let { version ->
+        val vintf = if (securityLevel == SecurityLevel.STRONGBOX) vintfStrongBoxKeyMintVersion else vintfKeyMintVersion
+        vintf?.let { version ->
             Logger.d("keymasterVersion=${version.keymasterVersion} source=vintf securityLevel=$securityLevel")
             return version.keymasterVersion
         }
@@ -347,7 +350,7 @@ object AndroidDeviceUtils {
     )
 
     private val vintfKeyMintVersion: VintfKeyMintVersion? by lazy {
-        readVintfKeyMintVersion().also { version ->
+        readVintfKeyMintVersion(DEFAULT_INSTANCE).also { version ->
             if (version != null) {
                 Logger.i(
                     "Using KeyMint version from VINTF: attestation=${version.attestationVersion}, " +
@@ -359,7 +362,11 @@ object AndroidDeviceUtils {
         }
     }
 
-    private fun readVintfKeyMintVersion(): VintfKeyMintVersion? {
+    private val vintfStrongBoxKeyMintVersion: VintfKeyMintVersion? by lazy {
+        readVintfKeyMintVersion(STRONGBOX_INSTANCE) ?: vintfKeyMintVersion
+    }
+
+    private fun readVintfKeyMintVersion(instance: String): VintfKeyMintVersion? {
         val files = linkedMapOf<String, File>()
 
         VINTF_MANIFEST_DIRS.forEach { path ->
@@ -384,7 +391,7 @@ object AndroidDeviceUtils {
 
         return files.values
             .flatMap { file ->
-                runCatching { parseKeyMintVersions(file) }
+                runCatching { parseKeyMintVersions(file, instance) }
                     .getOrElse { throwable ->
                         Logger.d("Unable to parse KeyMint VINTF ${file.absolutePath}: ${throwable.message}")
                         emptyList()
@@ -393,7 +400,7 @@ object AndroidDeviceUtils {
             .maxByOrNull { it.attestationVersion }
     }
 
-    private fun parseKeyMintVersions(file: File): List<VintfKeyMintVersion> {
+    private fun parseKeyMintVersions(file: File, instance: String): List<VintfKeyMintVersion> {
         val document = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(file)
         val root = document.documentElement ?: return emptyList()
 
@@ -410,7 +417,7 @@ object AndroidDeviceUtils {
 
             when (halName) {
                 KEYMINT_HAL_NAME ->
-                    if (hasDefaultInstance(fqnames, interfaces, KEYMINT_INTERFACE_NAME)) {
+                    if (hasInstance(fqnames, interfaces, KEYMINT_INTERFACE_NAME, instance)) {
                         versions.mapNotNull { version ->
                             version.toIntOrNull()
                                 ?.takeIf { it > 0 }
@@ -427,7 +434,7 @@ object AndroidDeviceUtils {
                         emptyList()
                     }
                 KEYMASTER_HAL_NAME ->
-                    if (hasDefaultInstance(fqnames, interfaces, KEYMASTER_INTERFACE_NAME)) {
+                    if (hasInstance(fqnames, interfaces, KEYMASTER_INTERFACE_NAME, instance)) {
                         (versions.flatMap(::expandHidlVersions) + fqnames.mapNotNull(::versionFromFqname))
                             .distinct()
                             .mapNotNull { version ->
@@ -462,15 +469,16 @@ object AndroidDeviceUtils {
             .map { it.textContent.trim() }
             .filter { it.isNotEmpty() }
 
-    private fun hasDefaultInstance(
+    private fun hasInstance(
         fqnames: List<String>,
         interfaces: Map<String, Set<String>>,
         interfaceName: String,
+        instance: String,
     ): Boolean =
         fqnames.any { fqname ->
             fqname.substringAfter("::", fqname).substringBefore("/") == interfaceName &&
-                fqname.substringAfter("/", "") == DEFAULT_INSTANCE
-        } || interfaces[interfaceName]?.contains(DEFAULT_INSTANCE) == true
+                fqname.substringAfter("/", "") == instance
+        } || interfaces[interfaceName]?.contains(instance) == true
 
     private fun versionFromFqname(fqname: String): String? =
         FQNAME_VERSION_REGEX.find(fqname)?.groupValues?.getOrNull(1)
@@ -512,6 +520,7 @@ object AndroidDeviceUtils {
     private const val KEYMINT_INTERFACE_NAME = "IKeyMintDevice"
     private const val KEYMASTER_INTERFACE_NAME = "IKeymasterDevice"
     private const val DEFAULT_INSTANCE = "default"
+    private const val STRONGBOX_INSTANCE = "strongbox"
     private val FQNAME_VERSION_REGEX = Regex("^@([0-9]+(?:\\.[0-9]+)?)::")
     private val HIDL_VERSION_RANGE_REGEX = Regex("^([0-9]+)\\.([0-9]+)-([0-9]+)$")    // --- APEX and Module Hash ---
 
