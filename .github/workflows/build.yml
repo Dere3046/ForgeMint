@@ -43,16 +43,18 @@ jobs:
       - uses: actions/upload-artifact@v5
         with:
           name: debug
-          path: out/*-Debug.zip
+          path: module/build/outputs/debug/*.zip
 
       - uses: actions/upload-artifact@v5
         with:
           name: release
-          path: out/*-Release.zip
+          path: module/build/outputs/release/*.zip
 
       - name: publish release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: out/*.zip
+          files: |
+            module/build/outputs/debug/*.zip
+            module/build/outputs/release/*.zip
           generate_release_notes: true
