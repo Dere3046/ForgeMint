@@ -254,6 +254,9 @@ object AttestationPatcher {
             }
         )
         if (matching != null) return matching
+        if (!ConfigManager.isFallbackEnabled) {
+            throw IllegalArgumentException("No '$keyType' attestation key and fallback disabled")
+        }
 
         return KeyboxReader.loadAnyKeybox()?.also {
             Logger.d("No '$keyType' attestation key; re-signing under available keybox key")

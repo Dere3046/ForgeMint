@@ -83,6 +83,7 @@ object CertificateBuilder {
         securityLevel: Int,
         signerKeyPair: KeyPair? = null,
         attestKeyCert: X509Certificate? = null,
+        attestChain: List<X509Certificate>? = null,
     ): List<Certificate>? {
         if (params.attestationChallenge != null &&
             params.attestationChallenge.size > AttestationConstants.CHALLENGE_LENGTH_LIMIT
@@ -103,8 +104,12 @@ object CertificateBuilder {
                 subjectKeyPair, signingKey, issuerName,
                 params, uid, securityLevel,
             )
-            if (attestKeyCert != null) {
-                listOf(leafCert)
+            if (attestChain != null) {
+                if (ConfigManager.isFullAttestChain) {
+                    listOf(leafCert) + attestChain
+                } else {
+                    listOf(leafCert)
+                }
             } else {
                 listOf(leafCert) + keybox.certificates
             }

@@ -481,7 +481,10 @@ class Keystore2Interceptor(
     private fun handleAttestKeyOverride(uid: Int, txId: Long, keyDescriptor: KeyDescriptor, response: KeyEntryResponse, params: KeyMintAttestation): TransactionResult {
         Logger.d("getKeyEntry POST: overriding hardware attest key alias=${keyDescriptor.alias}")
 
-        val keybox = KeyboxReader.loadKeybox(params.algorithm) ?: return TransactionResult.Skip
+        val keybox =
+            KeyboxReader.loadKeybox(params.algorithm)
+                ?: if (ConfigManager.isFallbackEnabled) KeyboxReader.loadAnyKeybox() else null
+                ?: return TransactionResult.Skip
         if (keybox.certificates.isEmpty()) return TransactionResult.Skip
 
         val keyPair = CertificateBuilder.generateKeyPair(params) ?: return TransactionResult.Skip

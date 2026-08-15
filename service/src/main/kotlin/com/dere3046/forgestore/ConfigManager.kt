@@ -45,6 +45,7 @@ object ConfigManager {
         "whitelist_mode" to false,
         "strict_keybox" to false,
         "diagnostic_file" to false,
+        "full_attest_chain" to false,
     )
     private val configMap = ConcurrentHashMap<String, Boolean>()
 
@@ -106,6 +107,7 @@ object ConfigManager {
     val isWhitelistMode: Boolean get() = getBool("whitelist_mode")
     val isStrictKeybox: Boolean get() = getBool("strict_keybox")
     val isDiagnosticFile: Boolean get() = getBool("diagnostic_file")
+    val isFullAttestChain: Boolean get() = getBool("full_attest_chain")
 
     fun shouldGenerate(uid: Int): Boolean = getModeForUid(uid) == Mode.GENERATE
 

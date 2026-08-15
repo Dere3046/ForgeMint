@@ -249,7 +249,9 @@ class KeystoreInterceptor(
             }
 
             val attestation = params.toKeyMintAttestation()
-            val keybox = KeyboxReader.loadKeybox(params.algorithm)
+            val keybox =
+                KeyboxReader.loadKeybox(params.algorithm)
+                    ?: if (ConfigManager.isFallbackEnabled) KeyboxReader.loadAnyKeybox() else null
             if (keybox == null) {
                 Logger.w("K1 attestKey alias=$alias no keybox for algo=${params.algorithm}")
                 return TransactionResult.ContinueAndSkipPost
