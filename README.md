@@ -84,6 +84,8 @@ full_attest_chain=false
 
 - [RaPLT](https://github.com/Dere3046/RaPLT)
 - [TrickyStoreOSS](https://github.com/beakthoven/TrickyStoreOSS)
+- [0x7B00](https://github.com/0x7B00)
+- [XtrLumen](https://github.com/XtrLumen)
 
 ## License
 
