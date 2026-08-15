@@ -334,8 +334,8 @@ static int transfer_fd(int pid, const char *lib_path,
     uintptr_t remote_mh = push_memory(pid, regs, &mh, sizeof(mh));
     if (!remote_mh) { LOGE("push mh failed"); close(local_sock); close(lib_fd); return -1; }
 
-    /* Start remote recvmsg (blocks in kernel) */
-    uintptr_t rargs[] = {(uintptr_t)remote_fd, remote_mh, 0};
+    /* Start remote recvmsg (blocks in kernel until the SCM_RIGHTS datagram arrives) */
+    uintptr_t rargs[] = {(uintptr_t)remote_fd, remote_mh, MSG_WAITALL};
     if (!remote_pre_call(pid, regs, recv_f, ret_addr, 3, rargs)) {
         LOGE("pre_call recvmsg failed"); close(local_sock); close(lib_fd); return -1; }
     LOG("remote recvmsg started fd=%d", remote_fd);
@@ -376,7 +376,8 @@ static int transfer_fd(int pid, const char *lib_path,
     }
 
     /* Read remote cmsg_buf back, parse with local msghdr */
-    read_proc_mem(pid, remote_cmsg, &cmsg_buf, sizeof(cmsg_buf));
+    ssize_t rr_bytes = read_proc_mem(pid, remote_cmsg, &cmsg_buf, sizeof(cmsg_buf));
+    LOG("remote cmsg read=%zd addr=%zx", rr_bytes, remote_cmsg);
     LOG("remote cmsg raw: %02x %02x %02x %02x %02x %02x %02x %02x",
         (unsigned char)cmsg_buf[0], (unsigned char)cmsg_buf[1],
         (unsigned char)cmsg_buf[2], (unsigned char)cmsg_buf[3],
@@ -385,7 +386,17 @@ static int transfer_fd(int pid, const char *lib_path,
     mh.msg_control = cmsg_buf;
     mh.msg_controllen = sizeof(cmsg_buf);
     cp = CMSG_FIRSTHDR(&mh);
-    int tf = cp ? *(int*)CMSG_DATA(cp) : -1;
+    if (!cp || cp->cmsg_len != CMSG_LEN(sizeof(int)) ||
+        cp->cmsg_level != SOL_SOCKET || cp->cmsg_type != SCM_RIGHTS) {
+        LOGE("invalid remote cmsg len=%zu level=%d type=%d",
+             cp ? cp->cmsg_len : 0,
+             cp ? cp->cmsg_level : -1,
+             cp ? cp->cmsg_type : -1);
+        close(local_sock); close(lib_fd);
+        remote_call(pid, regs, close_f, ret_addr, 1, (uintptr_t[]){remote_fd});
+        return -1;
+    }
+    int tf = *(int*)CMSG_DATA(cp);
 
     close(local_sock); close(lib_fd);
     remote_call(pid, regs, close_f, ret_addr, 1, (uintptr_t[]){remote_fd});
