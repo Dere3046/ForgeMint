@@ -5,6 +5,16 @@ on:
   push:
     tags:
       - 'v*'
+    paths:
+      - 'library/**'
+      - 'service/**'
+      - 'module/**'
+      - 'stub/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradle/**'
+      - '.github/workflows/build.yml'
 
 jobs:
   build:

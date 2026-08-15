@@ -1,6 +1,6 @@
 val moduleId by extra("forge_store")
 val moduleName by extra("Forge Store")
-val verName by extra("v0.1.0")
+val verName by extra("v0.7.5")
 val verType by extra("-Dev")
 val verCode by extra(
     providers.exec {
