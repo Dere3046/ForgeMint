@@ -82,9 +82,14 @@ full_attest_chain=false
 
 ## Acknowledgement
 
+- [XtrLumen](https://github.com/XtrLumen)
 - [RaPLT](https://github.com/Dere3046/RaPLT)
-- [TEESimulator](https://github.com/JingMatrix/TEESimulator)
 - [TrickyStoreOSS](https://github.com/beakthoven/TrickyStoreOSS)
+- [0x7B00](https://github.com/0x7B00)
+- [TEESimulator](https://github.com/JingMatrix/TEESimulator)
+- [汐の月](https://www.coolapk.com/u/1550124)
+- [haohao3001](https://github.com/haohao3001)
+- [mx_wj](https://github.com/mx-wj)
 
 ## License
 
