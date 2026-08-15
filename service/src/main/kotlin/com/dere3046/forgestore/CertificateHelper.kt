@@ -88,11 +88,15 @@ object CertificateHelper {
                     Tag.BOOT_PATCHLEVEL -> AndroidDeviceUtils.getBootPatchLevelLong(uid)
                     else -> return@mapNotNull auth
                 }
-                Authorization().apply {
-                    securityLevel = auth.securityLevel
-                    keyParameter = KeyParameter().apply {
-                        tag = auth.keyParameter.tag
-                        value = KeyParameterValue().apply { integer = replacement }
+                if (replacement == AndroidDeviceUtils.DO_NOT_REPORT) {
+                    null
+                } else {
+                    Authorization().apply {
+                        securityLevel = auth.securityLevel
+                        keyParameter = KeyParameter().apply {
+                            tag = auth.keyParameter.tag
+                            value = KeyParameterValue().apply { integer = replacement }
+                        }
                     }
                 }
             }?.toTypedArray()
