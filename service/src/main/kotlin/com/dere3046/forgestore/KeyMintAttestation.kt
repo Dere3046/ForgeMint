@@ -56,12 +56,14 @@ data class KeyMintAttestation(
     val includeUniqueId: Boolean?,
     val callerNonce: Boolean?,
     val minMacLength: Int?,
+    val macLength: Int? = null,
     val rollbackResistance: Boolean?,
     val earlyBootOnly: Boolean?,
     val allowWhileOnBody: Boolean?,
     val trustedUserPresenceRequired: Boolean?,
     val trustedConfirmationRequired: Boolean?,
     val maxUsesPerBoot: Int?,
+    val usageCountLimit: Int?,
     val unlockedDeviceRequired: Boolean?,
     val rsaOaepMgfDigest: List<Int>,
     val activeDateTime: Date?,
@@ -100,12 +102,14 @@ data class KeyMintAttestation(
         includeUniqueId = params.findBoolean(Tag.INCLUDE_UNIQUE_ID),
         callerNonce = params.findBoolean(Tag.CALLER_NONCE),
         minMacLength = params.findInteger(Tag.MIN_MAC_LENGTH),
+        macLength = params.findInteger(Tag.MAC_LENGTH),
         rollbackResistance = params.findBoolean(Tag.ROLLBACK_RESISTANCE),
         earlyBootOnly = params.findBoolean(Tag.EARLY_BOOT_ONLY),
         allowWhileOnBody = params.findBoolean(Tag.ALLOW_WHILE_ON_BODY),
         trustedUserPresenceRequired = params.findBoolean(Tag.TRUSTED_USER_PRESENCE_REQUIRED),
         trustedConfirmationRequired = params.findBoolean(Tag.TRUSTED_CONFIRMATION_REQUIRED),
         maxUsesPerBoot = params.findInteger(Tag.MAX_USES_PER_BOOT),
+        usageCountLimit = params.findInteger(Tag.USAGE_COUNT_LIMIT),
         unlockedDeviceRequired = params.findBoolean(Tag.UNLOCKED_DEVICE_REQUIRED),
         rsaOaepMgfDigest = params.findAllDigests(Tag.RSA_OAEP_MGF_DIGEST),
         activeDateTime = params.findDate(Tag.ACTIVE_DATETIME),
@@ -113,7 +117,9 @@ data class KeyMintAttestation(
         usageExpireDateTime = params.findDate(Tag.USAGE_EXPIRE_DATETIME),
         maxBootLevel = params.findInteger(Tag.MAX_BOOT_LEVEL),
         rawParams = params,
-    )
+    ) {
+        params.forEach { KeyMintParameterLogger.logParameter(it) }
+    }
 
     val isAttestKey: Boolean
         get() = purpose.size == 1 && purpose.contains(KeyPurpose.ATTEST_KEY)
@@ -134,7 +140,7 @@ data class KeyMintAttestation(
 
 
 private fun Array<KeyParameter>.findBoolean(tag: Int): Boolean? =
-    find { it.tag == tag }?.value?.boolValue
+    if (any { it.tag == tag }) true else null
 
 private fun Array<KeyParameter>.findInteger(tag: Int): Int? =
     find { it.tag == tag }?.value?.integer

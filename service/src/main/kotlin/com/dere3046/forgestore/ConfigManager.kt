@@ -25,10 +25,10 @@ object ConfigManager {
     enum class Mode { GENERATE, PATCH, AUTO }
 
     data class CustomPatchLevel(
-        val system: Int?,
-        val vendor: Int?,
-        val boot: Int?,
-        val all: Int?,
+        val system: String?,
+        val vendor: String?,
+        val boot: String?,
+        val all: String?,
     )
 
     private const val CONFIG_DIR = "/data/adb/forge_store"
@@ -43,6 +43,8 @@ object ConfigManager {
         "verbose_log" to false,
         "fallback" to false,
         "whitelist_mode" to false,
+        "strict_keybox" to false,
+        "diagnostic_file" to false,
     )
     private val configMap = ConcurrentHashMap<String, Boolean>()
 
@@ -102,6 +104,8 @@ object ConfigManager {
     val isVerboseLog: Boolean get() = getBool("verbose_log")
     val isFallbackEnabled: Boolean get() = getBool("fallback")
     val isWhitelistMode: Boolean get() = getBool("whitelist_mode")
+    val isStrictKeybox: Boolean get() = getBool("strict_keybox")
+    val isDiagnosticFile: Boolean get() = getBool("diagnostic_file")
 
     fun shouldGenerate(uid: Int): Boolean = getModeForUid(uid) == Mode.GENERATE
 
@@ -177,13 +181,10 @@ object ConfigManager {
     private fun loadSecurityPatchLevels() {
         if (!patchFile.exists()) return
         try {
-            var sys: Int? = null
-            var ven: Int? = null
-            var boo: Int? = null
-            var all: Int? = null
-            var sysProp = false
-            var venProp = false
-            var bootProp = false
+            var sys: String? = null
+            var ven: String? = null
+            var boo: String? = null
+            var all: String? = null
 
             for (line in patchFile.readLines()) {
                 val trimmed = line.trim()
@@ -192,35 +193,20 @@ object ConfigManager {
                 if (eqIdx < 0) continue
                 val key = trimmed.substring(0, eqIdx).trim().lowercase()
                 val value = trimmed.substring(eqIdx + 1).trim()
-                val isProp = value == "prop"
-                val parsed = parsePatchValue(value)
                 when (key) {
-                    "system" -> { sys = parsed; sysProp = isProp }
-                    "vendor" -> { ven = parsed; venProp = isProp }
-                    "boot" -> { boo = parsed; bootProp = isProp }
-                    "all" -> { all = parsed; sysProp = isProp; venProp = isProp; bootProp = isProp }
+                    "system" -> sys = value
+                    "vendor" -> ven = value
+                    "boot" -> boo = value
+                    "all" -> all = value
                 }
             }
 
-            if (sysProp && !venProp) ven = null
-            if (sysProp && !bootProp) boo = null
-
-            if (sys != null || ven != null || boo != null || all != null || sysProp || venProp || bootProp) {
+            if (sys != null || ven != null || boo != null || all != null) {
                 globalPatchLevel = CustomPatchLevel(sys, ven, boo, all)
                 Logger.i("Loaded global patch level: system=${sys} vendor=${ven} boot=${boo} all=${all}")
             }
         } catch (e: Exception) {
             Logger.e("Failed to load $PATCH_FILE", e)
-        }
-    }
-
-    private fun parsePatchValue(value: String): Int? {
-        if (value == "prop") return null
-        val digits = value.replace("-", "")
-        return when (digits.length) {
-            8 -> digits.take(8).toIntOrNull()
-            6 -> "${digits.take(6)}01".toIntOrNull()
-            else -> null
         }
     }
 

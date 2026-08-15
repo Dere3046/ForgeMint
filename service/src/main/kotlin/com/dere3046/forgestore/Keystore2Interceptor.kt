@@ -35,6 +35,18 @@ class Keystore2Interceptor(
         mutableSetOf<StateManager.KeyIdentifier>()
     )
 
+    val interceptedCodes: IntArray
+        get() = listOfNotNull(
+            GET_KEY_ENTRY_TRANSACTION.takeIf { it > 0 },
+            DELETE_KEY_TRANSACTION.takeIf { it > 0 },
+            UPDATE_SUBCOMPONENT_TRANSACTION.takeIf { it > 0 },
+            GRANT_TRANSACTION.takeIf { it > 0 },
+            UNGRANT_TRANSACTION.takeIf { it > 0 },
+            LIST_ENTRIES_TRANSACTION.takeIf { it > 0 },
+            LIST_ENTRIES_BATCHED_TRANSACTION?.takeIf { it > 0 },
+            GET_NUMBER_OF_ENTRIES_TRANSACTION.takeIf { it > 0 },
+        ).toIntArray()
+
     override fun onPreTransact(
         txId: Long,
         target: IBinder,
@@ -137,7 +149,7 @@ class Keystore2Interceptor(
         }
 
         if (code == GET_KEY_ENTRY_TRANSACTION) {
-            return handlePostGetKeyEntry(callingUid, data, reply)
+            return handlePostGetKeyEntry(callingUid, txId, data, reply)
         }
 
         return TransactionResult.Skip
@@ -387,7 +399,7 @@ class Keystore2Interceptor(
         return TransactionResult.Continue
     }
 
-    private fun handlePostGetKeyEntry(uid: Int, data: Parcel, reply: Parcel): TransactionResult {
+    private fun handlePostGetKeyEntry(uid: Int, txId: Long, data: Parcel, reply: Parcel): TransactionResult {
         if (KeyMintInterceptor.hasException(reply)) return TransactionResult.Skip
         val savedReplyPos = reply.dataPosition()
         try {
@@ -415,7 +427,7 @@ class Keystore2Interceptor(
             }
 
             if (parsedParams.isAttestKey) {
-                return handleAttestKeyOverride(uid, keyDescriptor, response, parsedParams)
+                return handleAttestKeyOverride(uid, txId, keyDescriptor, response, parsedParams)
             }
 
             val originalChain = CertificateHelper.getCertificateChain(metadata) ?: return TransactionResult.Skip
@@ -448,9 +460,11 @@ class Keystore2Interceptor(
                 patchedChain = AttestationPatcher.patchCertificateChain(originalChain, uid)
             }
 
+            AttestationDossier.log(uid, txId, "PATCH", patchedChain.toList())
             CertificateHelper.updateCertificateChain(uid, metadata, patchedChain)
                 .onFailure { e -> Logger.e("updateCertificateChain failed", e) }
             metadata.authorizations = AttestationPatcher.patchAuthorizations(metadata.authorizations, uid)
+            AttestationDossier.logAuthShape(uid, txId, metadata.authorizations)
 
             val override = Parcel.obtain()
             override.writeNoException()
@@ -464,7 +478,7 @@ class Keystore2Interceptor(
         return TransactionResult.Skip
     }
 
-    private fun handleAttestKeyOverride(uid: Int, keyDescriptor: KeyDescriptor, response: KeyEntryResponse, params: KeyMintAttestation): TransactionResult {
+    private fun handleAttestKeyOverride(uid: Int, txId: Long, keyDescriptor: KeyDescriptor, response: KeyEntryResponse, params: KeyMintAttestation): TransactionResult {
         Logger.d("getKeyEntry POST: overriding hardware attest key alias=${keyDescriptor.alias}")
 
         val keybox = KeyboxReader.loadKeybox(params.algorithm) ?: return TransactionResult.Skip
@@ -476,6 +490,7 @@ class Keystore2Interceptor(
             keyPair, keybox, params, uid,
             response.metadata.keySecurityLevel,
         ) ?: return TransactionResult.Skip
+        AttestationDossier.log(uid, txId, "FORGE-attestkey", chain)
 
         CertificateHelper.updateCertificateChain(uid, response.metadata, chain.toTypedArray())
             .onFailure { e -> Logger.e("updateCertificateChain failed for attest key", e) }

@@ -35,35 +35,20 @@ import javax.crypto.spec.SecretKeySpec
 
 object AttestationBuilder {
 
-    val bootKey: ByteArray by lazy { initBootKey() }
-    val bootHash: ByteArray by lazy { initBootHash() }
+    val bootKey: ByteArray
+        get() = AndroidDeviceUtils.bootKey
+    val bootHash: ByteArray
+        get() = AndroidDeviceUtils.bootHash
 
-    val osVersion: Int by lazy {
-        DeviceAttestationService.cachedData?.osVersion ?: run {
-            val release = Build.VERSION.RELEASE ?: "15"
-            val parts = release.split(".").map { it.toIntOrNull() ?: 0 }
-            when (parts.size) {
-                1 -> parts[0] * 10000
-                2 -> parts[0] * 10000 + parts[1] * 100
-                3 -> parts[0] * 10000 + parts[1] * 100 + parts[2]
-                else -> 160000
-            }
-        }
-    }
+    val osVersion: Int
+        get() = AndroidDeviceUtils.osVersion
 
     fun getAttestVersion(securityLevel: Int): Int {
-        if (securityLevel == android.hardware.security.keymint.SecurityLevel.STRONGBOX) return 300
-        return DeviceAttestationService.cachedData?.attestVersion ?: when {
-            Build.VERSION.SDK_INT >= 36 -> 400
-            Build.VERSION.SDK_INT >= 33 -> 300
-            Build.VERSION.SDK_INT >= 31 -> 200
-            else -> 100
-        }
+        return AndroidDeviceUtils.getAttestVersion(securityLevel)
     }
 
     fun getKeymasterVersion(securityLevel: Int): Int {
-        val av = getAttestVersion(securityLevel)
-        return if (av >= 100) av else 41
+        return AndroidDeviceUtils.getKeymasterVersion(securityLevel)
     }
 
     fun buildAttestationExtension(
@@ -100,60 +85,45 @@ object AttestationBuilder {
             ASN1Integer(osVersion.toLong()),
         )
 
-        val osPatch = getPatchLevel(uid)
-        props[AttestationConstants.TAG_OS_PATCHLEVEL] = DERTaggedObject(
-            true, AttestationConstants.TAG_OS_PATCHLEVEL,
-            ASN1Integer(osPatch.toLong()),
-        )
+        val osPatch = AndroidDeviceUtils.getPatchLevel(uid)
+        props[AttestationConstants.TAG_OS_PATCHLEVEL] =
+            if (osPatch != AndroidDeviceUtils.DO_NOT_REPORT) {
+                DERTaggedObject(
+                    true, AttestationConstants.TAG_OS_PATCHLEVEL,
+                    ASN1Integer(osPatch.toLong()),
+                )
+            } else {
+                null
+            }
 
-        val vendorPatch = getPatchLevelLong(uid)
-        props[AttestationConstants.TAG_VENDOR_PATCHLEVEL] = DERTaggedObject(
-            true, AttestationConstants.TAG_VENDOR_PATCHLEVEL,
-            ASN1Integer(vendorPatch.toLong()),
-        )
+        val vendorPatch = AndroidDeviceUtils.getVendorPatchLevelLong(uid)
+        props[AttestationConstants.TAG_VENDOR_PATCHLEVEL] =
+            if (vendorPatch != AndroidDeviceUtils.DO_NOT_REPORT) {
+                DERTaggedObject(
+                    true, AttestationConstants.TAG_VENDOR_PATCHLEVEL,
+                    ASN1Integer(vendorPatch.toLong()),
+                )
+            } else {
+                null
+            }
 
-        val bootPatch = getPatchLevelLong(uid)
-        props[AttestationConstants.TAG_BOOT_PATCHLEVEL] = DERTaggedObject(
-            true, AttestationConstants.TAG_BOOT_PATCHLEVEL,
-            ASN1Integer(bootPatch.toLong()),
-        )
+        val bootPatch = AndroidDeviceUtils.getBootPatchLevelLong(uid)
+        props[AttestationConstants.TAG_BOOT_PATCHLEVEL] =
+            if (bootPatch != AndroidDeviceUtils.DO_NOT_REPORT) {
+                DERTaggedObject(
+                    true, AttestationConstants.TAG_BOOT_PATCHLEVEL,
+                    ASN1Integer(bootPatch.toLong()),
+                )
+            } else {
+                null
+            }
 
         return props
     }
 
-    fun getPatchLevel(uid: Int): Int {
-        val custom = ConfigManager.getPatchLevelForUid(uid)
-        val value = custom?.system ?: custom?.all
-        if (value != null) return value
-        DeviceAttestationService.cachedData?.osPatchLevel?.let { return it }
-        return parseOsPatchFromBuild()
-    }
+    fun getPatchLevel(uid: Int): Int = AndroidDeviceUtils.getPatchLevel(uid)
 
-    fun getPatchLevelLong(uid: Int): Int {
-        val custom = ConfigManager.getPatchLevelForUid(uid)
-        val value = custom?.vendor ?: custom?.boot ?: custom?.all
-        if (value != null) return value
-        DeviceAttestationService.cachedData?.vendorPatchLevel?.let { return it }
-        DeviceAttestationService.cachedData?.bootPatchLevel?.let { return it }
-        return parseLongPatchFromBuild()
-    }
-
-    private fun parseOsPatchFromBuild(): Int {
-        val patch = Build.VERSION.SECURITY_PATCH ?: "2026-06"
-        val parts = patch.split("-")
-        if (parts.size == 2) {
-            val y = parts[0].toIntOrNull() ?: 2026
-            val m = parts[1].toIntOrNull() ?: 6
-            return (y - 2000) * 12 + m
-        }
-        return 26206
-    }
-
-    private fun parseLongPatchFromBuild(): Int {
-        val patch = Build.VERSION.SECURITY_PATCH ?: "2026-06-01"
-        val digits = patch.replace("-", "")
-        return digits.take(8).toIntOrNull() ?: 20260601
-    }
+    fun getPatchLevelLong(uid: Int): Int = AndroidDeviceUtils.getVendorPatchLevelLong(uid)
 
     private fun buildKeyDescription(
         params: KeyMintAttestation,
@@ -190,12 +160,8 @@ object AttestationBuilder {
         if (file.exists() && file.length() == 32L) {
             file.readBytes()
         } else {
-            Logger.w("hbk invalid or missing, regenerating")
-            val newHbk = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
-            try { file.writeBytes(newHbk) } catch (e: Exception) {
-                Logger.e("hbk write failed", e)
-            }
-            newHbk
+            Logger.w("hbk not found, generating ephemeral hbk")
+            ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
         }
     }
 
@@ -231,6 +197,10 @@ object AttestationBuilder {
             list.add(DERTaggedObject(true, AttestationConstants.TAG_EC_CURVE,
                 ASN1Integer(params.ecCurve.toLong())))
         }
+        if (params.blockMode.isNotEmpty()) {
+            list.add(DERTaggedObject(true, AttestationConstants.TAG_BLOCK_MODE,
+                DERSet(params.blockMode.map { ASN1Integer(it.toLong()) }.toTypedArray())))
+        }
         if (params.padding.isNotEmpty()) {
             list.add(DERTaggedObject(true, AttestationConstants.TAG_PADDING,
                 DERSet(params.padding.map { ASN1Integer(it.toLong()) }.toTypedArray())))
@@ -240,9 +210,40 @@ object AttestationBuilder {
                 ASN1Integer(params.rsaPublicExponent.toLong())))
         }
 
+        val attestVersion = getAttestVersion(securityLevel)
+
+        if (params.rsaOaepMgfDigest.isNotEmpty() && attestVersion >= 100) {
+            list.add(DERTaggedObject(true, AttestationConstants.TAG_RSA_OAEP_MGF_DIGEST,
+                DERSet(params.rsaOaepMgfDigest.map { ASN1Integer(it.toLong()) }.toTypedArray())))
+        }
+        if (params.rollbackResistance == true && attestVersion >= 3) {
+            list.add(DERTaggedObject(true, AttestationConstants.TAG_ROLLBACK_RESISTANCE,
+                DERNull.INSTANCE))
+        }
+        if (params.earlyBootOnly == true && attestVersion >= 4) {
+            list.add(DERTaggedObject(true, AttestationConstants.TAG_EARLY_BOOT_ONLY,
+                DERNull.INSTANCE))
+        }
+        if (params.noAuthRequired == true) {
+            list.add(DERTaggedObject(true, AttestationConstants.TAG_NO_AUTH_REQUIRED,
+                DERNull.INSTANCE))
+        }
+        if (params.allowWhileOnBody == true) {
+            list.add(DERTaggedObject(true, AttestationConstants.TAG_ALLOW_WHILE_ON_BODY,
+                DERNull.INSTANCE))
+        }
+        if (params.trustedUserPresenceRequired == true && attestVersion >= 3) {
+            list.add(DERTaggedObject(true, AttestationConstants.TAG_TRUSTED_USER_PRESENCE_REQUIRED,
+                DERNull.INSTANCE))
+        }
+        if (params.trustedConfirmationRequired == true && attestVersion >= 3) {
+            list.add(DERTaggedObject(true, AttestationConstants.TAG_TRUSTED_CONFIRMATION_REQUIRED,
+                DERNull.INSTANCE))
+        }
+
         list.addAll(listOf(
-            DERTaggedObject(true, AttestationConstants.TAG_NO_AUTH_REQUIRED, DERNull.INSTANCE),
-            DERTaggedObject(true, AttestationConstants.TAG_ORIGIN, ASN1Integer(0L)),
+            DERTaggedObject(true, AttestationConstants.TAG_ORIGIN,
+                ASN1Integer((params.origin ?: 0).toLong())),
             DERTaggedObject(true, AttestationConstants.TAG_ROOT_OF_TRUST, buildRootOfTrust(null)),
         ))
 
@@ -273,7 +274,7 @@ object AttestationBuilder {
         params.model?.let {
             list.add(DERTaggedObject(true, AttestationConstants.TAG_ATTESTATION_ID_MODEL, DEROctetString(it)))
         }
-        if (getAttestVersion(securityLevel) >= 300) {
+        if (attestVersion >= 300) {
             params.secondImei?.let {
                 list.add(DERTaggedObject(true, AttestationConstants.TAG_ATTESTATION_ID_SECOND_IMEI, DEROctetString(it)))
             }
@@ -285,10 +286,11 @@ object AttestationBuilder {
         params: KeyMintAttestation,
         uid: Int,
         securityLevel: Int,
+        creationTimeMs: Long = System.currentTimeMillis(),
     ): DERSequence {
         val list = mutableListOf<ASN1Encodable>(
             DERTaggedObject(true, AttestationConstants.TAG_CREATION_DATETIME,
-                ASN1Integer(System.currentTimeMillis())),
+                ASN1Integer(creationTimeMs)),
         )
         if (params.attestationChallenge != null) {
             list.add(DERTaggedObject(true, AttestationConstants.TAG_ATTESTATION_APPLICATION_ID,
@@ -296,9 +298,33 @@ object AttestationBuilder {
         }
         if (getAttestVersion(securityLevel) >= 400) {
             list.add(DERTaggedObject(true, AttestationConstants.TAG_MODULE_HASH,
-                DEROctetString(readModuleHash())))
+                DEROctetString(AndroidDeviceUtils.moduleHash)))
         }
-        return DERSequence(list.toTypedArray())
+        if (params.callerNonce == true) {
+            list.add(DERTaggedObject(true, AttestationConstants.TAG_CALLER_NONCE,
+                DERNull.INSTANCE))
+        }
+        params.activeDateTime?.let {
+            list.add(DERTaggedObject(true, AttestationConstants.TAG_ACTIVE_DATETIME,
+                ASN1Integer(it.time)))
+        }
+        params.originationExpireDateTime?.let {
+            list.add(DERTaggedObject(true, AttestationConstants.TAG_ORIGINATION_EXPIRE_DATETIME,
+                ASN1Integer(it.time)))
+        }
+        params.usageExpireDateTime?.let {
+            list.add(DERTaggedObject(true, AttestationConstants.TAG_USAGE_EXPIRE_DATETIME,
+                ASN1Integer(it.time)))
+        }
+        params.usageCountLimit?.let {
+            list.add(DERTaggedObject(true, AttestationConstants.TAG_USAGE_COUNT_LIMIT,
+                ASN1Integer(it.toLong())))
+        }
+        if (params.unlockedDeviceRequired == true) {
+            list.add(DERTaggedObject(true, AttestationConstants.TAG_UNLOCKED_DEVICE_REQUIRED,
+                DERNull.INSTANCE))
+        }
+        return DERSequence(list.sortedBy { (it as DERTaggedObject).tagNo }.toTypedArray())
     }
 
     private data class DigestWrapper(val digest: ByteArray) {
@@ -311,6 +337,11 @@ object AttestationBuilder {
     }
 
     private fun getApplicationId(uid: Int): ByteArray {
+        val appUid = uid % 100000
+        if (appUid == 0 || appUid == 1000) {
+            return buildApplicationIdDer(listOf("AndroidSystem" to 1L), emptySet())
+        }
+
         try {
             val pm = getPackageManager()
             val packages = pm.getPackagesForUid(uid) ?: return emptyAppId()
@@ -347,6 +378,29 @@ object AttestationBuilder {
                 DERSet(signatureDigests.map { DEROctetString(it.digest) }.toTypedArray()),
             )).encoded
         } catch (_: Exception) { return emptyAppId() }
+    }
+
+    private fun buildApplicationIdDer(
+        packages: List<Pair<String, Long>>,
+        digests: Set<DigestWrapper>,
+    ): ByteArray {
+        val packageInfoList =
+            packages.map { (name, version) ->
+                DERSequence(
+                    arrayOf(
+                        DEROctetString(name.toByteArray(Charsets.UTF_8)),
+                        ASN1Integer(version),
+                    )
+                )
+            }
+        val applicationIdSequence =
+            DERSequence(
+                arrayOf(
+                    DERSet(packageInfoList.toTypedArray()),
+                    DERSet(digests.map { DEROctetString(it.digest) }.toTypedArray()),
+                )
+            )
+        return applicationIdSequence.encoded
     }
 
     private fun getPackageInfoReflect(pm: android.content.pm.PackageManager, pkg: String, userId: Int): android.content.pm.PackageInfo {

@@ -3,6 +3,8 @@ package android.hardware.security.keymint;
 import android.os.Parcel;
 import android.os.Parcelable;
 
+import androidx.annotation.NonNull;
+
 public final class KeyParameterValue implements Parcelable {
     public static final int algorithm = 1;
     public static final int blob = 14;
@@ -99,43 +101,138 @@ public final class KeyParameterValue implements Parcelable {
         throw new UnsupportedOperationException("STUB!");
     }
 
-    public int getTag() { throw new UnsupportedOperationException("STUB!"); }
-    public int getInvalid() { throw new UnsupportedOperationException("STUB!"); }
-    public void setInvalid(int _value) { throw new UnsupportedOperationException("STUB!"); }
-    public int getAlgorithm() { throw new UnsupportedOperationException("STUB!"); }
-    public void setAlgorithm(int _value) { throw new UnsupportedOperationException("STUB!"); }
-    public int getBlockMode() { throw new UnsupportedOperationException("STUB!"); }
-    public void setBlockMode(int _value) { throw new UnsupportedOperationException("STUB!"); }
-    public int getPaddingMode() { throw new UnsupportedOperationException("STUB!"); }
-    public void setPaddingMode(int _value) { throw new UnsupportedOperationException("STUB!"); }
-    public int getDigest() { throw new UnsupportedOperationException("STUB!"); }
-    public void setDigest(int _value) { throw new UnsupportedOperationException("STUB!"); }
-    public int getEcCurve() { throw new UnsupportedOperationException("STUB!"); }
-    public void setEcCurve(int _value) { throw new UnsupportedOperationException("STUB!"); }
-    public int getOrigin() { throw new UnsupportedOperationException("STUB!"); }
-    public void setOrigin(int _value) { throw new UnsupportedOperationException("STUB!"); }
-    public int getKeyPurpose() { throw new UnsupportedOperationException("STUB!"); }
-    public void setKeyPurpose(int _value) { throw new UnsupportedOperationException("STUB!"); }
-    public int getHardwareAuthenticatorType() { throw new UnsupportedOperationException("STUB!"); }
-    public void setHardwareAuthenticatorType(int _value) { throw new UnsupportedOperationException("STUB!"); }
-    public int getSecurityLevel() { throw new UnsupportedOperationException("STUB!"); }
-    public void setSecurityLevel(int _value) { throw new UnsupportedOperationException("STUB!"); }
-    public boolean getBoolValue() { throw new UnsupportedOperationException("STUB!"); }
-    public void setBoolValue(boolean _value) { throw new UnsupportedOperationException("STUB!"); }
-    public int getInteger() { throw new UnsupportedOperationException("STUB!"); }
-    public void setInteger(int _value) { throw new UnsupportedOperationException("STUB!"); }
-    public long getLongInteger() { throw new UnsupportedOperationException("STUB!"); }
-    public void setLongInteger(long _value) { throw new UnsupportedOperationException("STUB!"); }
-    public long getDateTime() { throw new UnsupportedOperationException("STUB!"); }
-    public void setDateTime(long _value) { throw new UnsupportedOperationException("STUB!"); }
-    public byte[] getBlob() { throw new UnsupportedOperationException("STUB!"); }
-    public void setBlob(byte[] _value) { throw new UnsupportedOperationException("STUB!"); }
+    public int getTag() {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public int getInvalid() {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public void setInvalid(int _value) {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public int getAlgorithm() {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public void setAlgorithm(int _value) {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public int getBlockMode() {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public void setBlockMode(int _value) {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public int getPaddingMode() {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public void setPaddingMode(int _value) {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public int getDigest() {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public void setDigest(int _value) {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public int getEcCurve() {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public void setEcCurve(int _value) {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public int getOrigin() {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public void setOrigin(int _value) {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public int getKeyPurpose() {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public void setKeyPurpose(int _value) {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public int getHardwareAuthenticatorType() {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public void setHardwareAuthenticatorType(int _value) {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public int getSecurityLevel() {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public void setSecurityLevel(int _value) {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public boolean getBoolValue() {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public void setBoolValue(boolean _value) {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public int getInteger() {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public void setInteger(int _value) {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public long getLongInteger() {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public void setLongInteger(long _value) {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public long getDateTime() {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public void setDateTime(long _value) {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public byte[] getBlob() {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
+    public void setBlob(byte[] _value) {
+        throw new UnsupportedOperationException("STUB!");
+    }
+
 
     @Override
-    public int describeContents() { throw new UnsupportedOperationException("STUB!"); }
+    public int describeContents() {
+        throw new UnsupportedOperationException("STUB!");
+    }
 
     @Override
-    public void writeToParcel(Parcel parcel, int i) {
+    public void writeToParcel(@NonNull Parcel parcel, int i) {
         throw new UnsupportedOperationException("STUB!");
     }
 }

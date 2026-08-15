@@ -55,7 +55,7 @@ object CertificateBuilder {
         return runCatching {
             val (algorithm, spec) = when (params.algorithm) {
                 android.hardware.security.keymint.Algorithm.RSA -> "RSA" to RSAKeyGenParameterSpec(
-                    params.keySize.takeIf { it > 0 } ?: 2048,
+                    params.keySize,
                     params.rsaPublicExponent ?: RSAKeyGenParameterSpec.F4,
                 )
                 else -> "EC" to ECGenParameterSpec(
@@ -84,7 +84,15 @@ object CertificateBuilder {
         signerKeyPair: KeyPair? = null,
         attestKeyCert: X509Certificate? = null,
     ): List<Certificate>? {
-        return runCatching {
+        if (params.attestationChallenge != null &&
+            params.attestationChallenge.size > AttestationConstants.CHALLENGE_LENGTH_LIMIT
+        ) {
+            throw IllegalArgumentException(
+                "Attestation challenge exceeds length limit (${params.attestationChallenge.size})"
+            )
+        }
+
+        return try {
             val signingKey = signerKeyPair ?: keybox.keyPair
             val issuerName = when {
                 attestKeyCert != null -> X509CertificateHolder(attestKeyCert.encoded).subject
@@ -95,8 +103,17 @@ object CertificateBuilder {
                 subjectKeyPair, signingKey, issuerName,
                 params, uid, securityLevel,
             )
-            listOf(leafCert) + keybox.certificates
-        }.getOrNull()
+            if (attestKeyCert != null) {
+                listOf(leafCert)
+            } else {
+                listOf(leafCert) + keybox.certificates
+            }
+        } catch (e: android.os.ServiceSpecificException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e("Failed to generate certificate chain", e)
+            null
+        }
     }
 
     fun generateFallbackChain(
@@ -139,10 +156,12 @@ object CertificateBuilder {
             builder.addExtension(Extension.keyUsage, true, KeyUsage(keyUsageBits))
         }
 
-        val attestationExt = AttestationBuilder.buildAttestationExtension(
-            params, uid, securityLevel,
-        )
-        builder.addExtension(attestationExt)
+        if (params.attestationChallenge != null) {
+            val attestationExt = AttestationBuilder.buildAttestationExtension(
+                params, uid, securityLevel,
+            )
+            builder.addExtension(attestationExt)
+        }
 
         val signerAlgorithm = when (signingKeyPair.private) {
             is ECKey -> "SHA256withECDSA"

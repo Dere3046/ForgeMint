@@ -97,6 +97,20 @@ static int set_regs(int pid, const struct user_regs_struct *r)
     return ptrace(PTRACE_SETREGSET, pid, NT_PRSTATUS, &iov);
 }
 
+static int wait_for_trace(int pid, int *status)
+{
+    while (1) {
+        pid_t ret = waitpid(pid, status, __WALL);
+        if (ret < 0 && errno == EINTR) {
+            continue;
+        }
+        if (ret < 0 || !WIFSTOPPED(*status)) {
+            return 0;
+        }
+        return 1;
+    }
+}
+
 static ssize_t write_proc_mem(int pid, uintptr_t addr, const void *buf, size_t len)
 {
     struct iovec lo = { .iov_base = (void *)buf, .iov_len = len };
@@ -194,11 +208,14 @@ static uintptr_t remote_post_call(int pid, struct user_regs_struct *regs,
                                    uintptr_t ret_addr)
 {
     int status;
-    if (waitpid(pid, &status, __WALL) < 0 || !WIFSTOPPED(status))
+    if (!wait_for_trace(pid, &status)) {
+        LOGE("wait_for_trace failed");
         return (uintptr_t)-1;
+    }
     if (get_regs(pid, regs) < 0) return (uintptr_t)-1;
     if ((uintptr_t)REG_PC(regs) != ret_addr) {
-        LOG("post_call stop at %lx sig=%d", (unsigned long)(uintptr_t)REG_PC(regs), WSTOPSIG(status));
+        int sig = WIFSIGNALED(status) ? WTERMSIG(status) : WSTOPSIG(status);
+        LOGE("post_call stop at %lx sig=%d", (unsigned long)(uintptr_t)REG_PC(regs), sig);
         return (uintptr_t)-1;
     }
     return REG_RET(regs);
@@ -233,12 +250,21 @@ static void set_status_ok(void)
     char buf[4096] = {0};
     ssize_t nr = read(fd, buf, sizeof(buf) - 1); close(fd);
     if (nr <= 0) return;
-    char *desc = strstr(buf, "description=");
-    if (!desc || strstr(desc + 12, "[😋]")) return;
-    char *nl = strchr(desc, '\n'); if (nl) *nl = '\0';
+    char *line = strstr(buf, "description=");
+    if (!line) return;
+    char *desc = line + strlen("description=");
+    if (strncmp(desc, "[OK]", 4) == 0) return;
+
+    char *content = desc;
+    if (content[0] == '[') {
+        char *close = strchr(content, ']');
+        if (close && close[1] == ' ') content = close + 2;
+    }
+
+    char *nl = strchr(line, '\n'); if (nl) *nl = '\0';
     char new_d[512];
-    snprintf(new_d, sizeof(new_d), "description=[😋] %s", desc + 12);
-    size_t pl = desc - buf, al = nl ? (buf + nr) - (nl + 1) : 0;
+    snprintf(new_d, sizeof(new_d), "description=[OK] %s", content);
+    size_t pl = line - buf, al = nl ? (buf + nr) - (nl + 1) : 0;
     char *out = malloc(pl + strlen(new_d) + al + 2);
     if (!out) return;
     memcpy(out, buf, pl); memcpy(out + pl, new_d, strlen(new_d));
@@ -287,6 +313,7 @@ static int transfer_fd(int pid, const char *lib_path,
 
     uintptr_t b[] = {(uintptr_t)remote_fd, remote_addr, addr_len};
     uintptr_t br = remote_call(pid, regs, bind_f, ret_addr, 3, b);
+    LOG("remote bind ret=%zu", br);
     if ((int)br < 0) {
         uintptr_t re = remote_call(pid, regs, errno_f, ret_addr, 0, NULL);
         int rerr = 0; read_proc_mem(pid, re, &rerr, sizeof(rerr));
@@ -311,6 +338,7 @@ static int transfer_fd(int pid, const char *lib_path,
     uintptr_t rargs[] = {(uintptr_t)remote_fd, remote_mh, 0};
     if (!remote_pre_call(pid, regs, recv_f, ret_addr, 3, rargs)) {
         LOGE("pre_call recvmsg failed"); close(local_sock); close(lib_fd); return -1; }
+    LOG("remote recvmsg started fd=%d", remote_fd);
     usleep(50000);
 
     /* Local sendmsg — must specify destination address */
@@ -324,22 +352,36 @@ static int transfer_fd(int pid, const char *lib_path,
     cp->cmsg_len = CMSG_LEN(sizeof(int)); cp->cmsg_level = SOL_SOCKET;
     cp->cmsg_type = SCM_RIGHTS; *(int*)CMSG_DATA(cp) = lib_fd;
 
-    if (sendmsg(local_sock, &mh, 0) < 0) {
+    ssize_t sr = sendmsg(local_sock, &mh, 0);
+    LOG("local sendmsg ret=%zd errno=%d lib_fd=%d", sr, errno, lib_fd);
+    if (sr < 0) {
         LOGE("sendmsg failed: %m");
         close(local_sock); close(lib_fd);
         remote_call(pid, regs, close_f, ret_addr, 1, (uintptr_t[]){remote_fd});
         return -1;
     }
 
-    if (remote_post_call(pid, regs, ret_addr) == (uintptr_t)-1) {
+    uintptr_t rr = remote_post_call(pid, regs, ret_addr);
+    LOG("remote recvmsg ret=%zu", rr);
+    if (rr == (uintptr_t)-1) {
         LOGE("post_call recvmsg failed");
         close(local_sock); close(lib_fd);
         remote_call(pid, regs, close_f, ret_addr, 1, (uintptr_t[]){remote_fd});
         return -1;
     }
+    if ((intptr_t)rr < 0) {
+        uintptr_t re = remote_call(pid, regs, errno_f, ret_addr, 0, NULL);
+        int rerr = 0; read_proc_mem(pid, re, &rerr, sizeof(rerr));
+        LOGE("remote recvmsg returned %zd errno=%d", (ssize_t)(intptr_t)rr, rerr);
+    }
 
     /* Read remote cmsg_buf back, parse with local msghdr */
     read_proc_mem(pid, remote_cmsg, &cmsg_buf, sizeof(cmsg_buf));
+    LOG("remote cmsg raw: %02x %02x %02x %02x %02x %02x %02x %02x",
+        (unsigned char)cmsg_buf[0], (unsigned char)cmsg_buf[1],
+        (unsigned char)cmsg_buf[2], (unsigned char)cmsg_buf[3],
+        (unsigned char)cmsg_buf[4], (unsigned char)cmsg_buf[5],
+        (unsigned char)cmsg_buf[6], (unsigned char)cmsg_buf[7]);
     mh.msg_control = cmsg_buf;
     mh.msg_controllen = sizeof(cmsg_buf);
     cp = CMSG_FIRSTHDR(&mh);
@@ -356,11 +398,10 @@ static int transfer_fd(int pid, const char *lib_path,
 static int do_inject(int pid, const char *lib_path)
 {
     struct user_regs_struct backup;
+    uintptr_t handle = 0;
     get_regs(pid, &backup);
     uintptr_t ret_addr = find_module_base(pid, "libc.so");
-    if (!ret_addr) { set_regs(pid, &backup); return -1; }
-
-    uintptr_t handle = 0;
+    if (!ret_addr) { goto cleanup; }
 
     /* Try FD transfer + android_dlopen_ext */
     uintptr_t a_dext = find_func_addr(pid, "libdl.so", "android_dlopen_ext");
@@ -379,7 +420,7 @@ static int do_inject(int pid, const char *lib_path)
                 char fd_path[32];
                 snprintf(fd_path, sizeof(fd_path), "/lib%s.so", fake);
                 uintptr_t path_addr = push_memory(pid, &regs, fd_path, strlen(fd_path) + 1);
-                if (!path_addr) { LOG("push path failed"); return -1; }
+                if (!path_addr) { LOG("push path failed"); goto cleanup; }
                 uintptr_t args[] = {path_addr, RTLD_NOW, info_addr};
                 handle = remote_call(pid, &regs, a_dext, ret_addr, 3, args);
                 LOG("android_dlopen_ext returned %p", (void*)handle);
@@ -446,6 +487,7 @@ static int do_inject(int pid, const char *lib_path)
     }
 #endif
 
+cleanup:
     set_regs(pid, &backup);
     return handle > 0 && handle != (uintptr_t)-1 ? 0 : -1;
 }

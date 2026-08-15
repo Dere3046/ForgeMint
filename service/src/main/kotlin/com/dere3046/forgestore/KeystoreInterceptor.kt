@@ -358,6 +358,7 @@ private class KeystoreOneKeygenParams(
             trustedUserPresenceRequired = null,
             trustedConfirmationRequired = null,
             maxUsesPerBoot = null,
+            usageCountLimit = null,
             unlockedDeviceRequired = null,
             rsaOaepMgfDigest = emptyList(),
             activeDateTime = null,

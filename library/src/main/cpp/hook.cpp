@@ -31,6 +31,8 @@
 #include <shared_mutex>
 #include <map>
 #include <queue>
+#include <vector>
+#include <algorithm>
 
 using namespace android;
 
@@ -60,8 +62,13 @@ struct ThreadTxInfo {
 static std::mutex g_thread_mutex;
 static std::map<std::thread::id, std::queue<ThreadTxInfo>> g_thread_map;
 
+struct RegistryEntry {
+    sp<IBinder> callback;
+    std::vector<uint32_t> codes;
+};
+
 static std::shared_mutex g_registry_mutex;
-static std::map<wp<IBinder>, sp<IBinder>> g_registry;
+static std::map<wp<IBinder>, RegistryEntry> g_registry;
 static std::atomic<uint64_t> g_tx_id_counter = 0;
 
 class BinderInterceptor : public BBinder {
@@ -72,6 +79,7 @@ public:
 
 class BinderStub : public BBinder {
 public:
+    const String16& getInterfaceDescriptor() const override;
     status_t onTransact(uint32_t code, const Parcel &data,
                         Parcel *reply, uint32_t flags) override;
 };
@@ -91,9 +99,24 @@ status_t BinderInterceptor::onTransact(uint32_t code, const Parcel &data,
         if (data.readStrongBinder(&callback) != OK || !callback) return BAD_VALUE;
         if (!target->localBinder()) return BAD_TYPE;
 
+        RegistryEntry entry;
+        entry.callback = callback;
+        if (data.dataAvail() >= (int)sizeof(int32_t)) {
+            int32_t count = 0;
+            if (data.readInt32(&count) == OK && count > 0) {
+                entry.codes.reserve(count);
+                for (int32_t i = 0; i < count; i++) {
+                    uint32_t c = 0;
+                    if (data.readUint32(&c) == OK) {
+                        entry.codes.push_back(c);
+                    }
+                }
+            }
+        }
+
         std::unique_lock lock(g_registry_mutex);
-        g_registry[target] = callback;
-        LOG("registered binder %p", target.get());
+        g_registry[target] = std::move(entry);
+        LOG("registered binder %p codes=%zu", target.get(), g_registry[target].codes.size());
         return OK;
     }
     case UNREGISTER_CODE: {
@@ -106,6 +129,12 @@ status_t BinderInterceptor::onTransact(uint32_t code, const Parcel &data,
     }
     }
     return BBinder::onTransact(code, data, reply, flags);
+}
+
+const String16& BinderStub::getInterfaceDescriptor() const
+{
+    static const String16 kDescriptor("com.dere3046.forgestore.BinderStub");
+    return kDescriptor;
 }
 
 status_t BinderStub::onTransact(uint32_t code, const Parcel &data,
@@ -241,6 +270,13 @@ static int hooked_ioctl(int fd, unsigned long request, ...)
     auto *bwr = (struct binder_write_read *)arg;
     if (bwr->read_size == 0 || bwr->read_consumed == 0 || !bwr->read_buffer) return ret;
 
+    if (bwr->read_consumed < sizeof(uint32_t)) return ret;
+    uint32_t first_cmd = *reinterpret_cast<const uint32_t *>(bwr->read_buffer);
+    if (first_cmd != BR_TRANSACTION && first_cmd != BR_TRANSACTION_SEC_CTX &&
+        bwr->read_consumed <= sizeof(uint32_t) + _IOC_SIZE(first_cmd)) {
+        return ret;
+    }
+
     uintptr_t ptr = (uintptr_t)bwr->read_buffer;
     uintptr_t end  = ptr + bwr->read_consumed;
 
@@ -256,6 +292,7 @@ static int hooked_ioctl(int fd, unsigned long request, ...)
                 ? &((binder_transaction_data_secctx *)ptr)->transaction_data
                 : (struct binder_transaction_data *)ptr;
             if (!tr || !tr->target.ptr || !tr->cookie) goto next;
+            if (tr->code > 0x00ffffffu && tr->code != BACKDOOR_CODE) goto next;
 
             BBinder *target = nullptr;
             bool hijack = false;
@@ -281,10 +318,12 @@ static int hooked_ioctl(int fd, unsigned long request, ...)
                     {
                         std::shared_lock lock(g_registry_mutex);
                         auto it = g_registry.find(wp_target);
-                        if (it != g_registry.end()) {
+                        if (it != g_registry.end() &&
+                            (it->second.codes.empty() ||
+                             std::find(it->second.codes.begin(), it->second.codes.end(), tr->code) != it->second.codes.end())) {
                             info.code     = tr->code;
                             info.target   = target;
-                            info.callback = it->second;
+                            info.callback = it->second.callback;
                             hijack = true;
                         }
                     }

@@ -83,9 +83,9 @@ object CertificateHelper {
 
             metadata.authorizations = metadata.authorizations?.mapNotNull { auth ->
                 val replacement = when (auth.keyParameter.tag) {
-                    Tag.OS_PATCHLEVEL -> AttestationBuilder.getPatchLevel(uid)
-                    Tag.VENDOR_PATCHLEVEL -> AttestationBuilder.getPatchLevelLong(uid)
-                    Tag.BOOT_PATCHLEVEL -> AttestationBuilder.getPatchLevelLong(uid)
+                    Tag.OS_PATCHLEVEL -> AndroidDeviceUtils.getPatchLevel(uid)
+                    Tag.VENDOR_PATCHLEVEL -> AndroidDeviceUtils.getVendorPatchLevelLong(uid)
+                    Tag.BOOT_PATCHLEVEL -> AndroidDeviceUtils.getBootPatchLevelLong(uid)
                     else -> return@mapNotNull auth
                 }
                 Authorization().apply {

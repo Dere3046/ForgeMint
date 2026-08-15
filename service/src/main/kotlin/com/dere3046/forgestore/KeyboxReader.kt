@@ -43,9 +43,16 @@ object KeyboxReader {
             val algoKey = algoToKey(algorithm) ?: return null
             val cache = keyboxCache ?: reload()
             if (cache.isEmpty()) return null
-            return cache[algoKey]
+            return cache[algoKey]?.also { logKeybox(it, algoKey) }
         }
-        return singleKey()
+        return singleKey()?.also { logKeybox(it, "any") }
+    }
+
+    private fun logKeybox(keybox: CertificateBuilder.KeyboxData, algorithm: String) {
+        val serials = keybox.certificates.joinToString(", ") { cert ->
+            (cert as? X509Certificate)?.serialNumber?.toString(16) ?: "?"
+        }
+        Logger.i("Using $algorithm keybox; attestation cert serials (hex): $serials")
     }
     private fun algoToKey(algo: Int): String? = when (algo) {
         Algorithm.RSA -> KeyProperties.KEY_ALGORITHM_RSA
@@ -59,6 +66,13 @@ object KeyboxReader {
     private fun singleKey(): CertificateBuilder.KeyboxData? {
         val cache = keyboxCache ?: reload()
         return cache.values.firstOrNull()
+    }
+
+    fun loadAnyKeybox(): CertificateBuilder.KeyboxData? {
+        val cache = keyboxCache ?: reload()
+        return cache[KeyProperties.KEY_ALGORITHM_EC]
+            ?: cache.values.firstOrNull()
+            ?.also { logKeybox(it, "any-fallback") }
     }
 
     private fun reload(): ConcurrentHashMap<String, CertificateBuilder.KeyboxData> {
@@ -82,6 +96,7 @@ object KeyboxReader {
 
     private fun parseXml(xmlContent: String): ConcurrentHashMap<String, CertificateBuilder.KeyboxData> {
         val found = ConcurrentHashMap<String, CertificateBuilder.KeyboxData>()
+        var malformedKey = false
         val parser = XmlPullParserFactory.newInstance().newPullParser().apply {
             setInput(StringReader(xmlContent))
         }
@@ -112,25 +127,59 @@ object KeyboxReader {
                 XmlPullParser.END_TAG -> when (parser.name) {
                     "PrivateKey" -> insideKeyPem = false
                     "Certificate" -> insideCert = false
-                    "Key" -> runCatching {
-                        val algo = currentAlgorithm ?: return@runCatching
-                        val pem = currentPrivateKeyPem ?: return@runCatching
-                        if (currentCerts.isEmpty()) return@runCatching
+                    "Key" -> {
+                        val algo = currentAlgorithm
+                        val pem = currentPrivateKeyPem
+                        val certPems = currentCerts.toList()
 
-                        val keyPair = parsePemKeyPair(pem) ?: return@runCatching
-                        val certs = currentCerts.mapNotNull { parsePemCert(it) }
+                        if (algo == null || pem == null || certPems.isEmpty()) {
+                            malformedKey = true
+                            Logger.w("Skipping malformed keybox entry (algorithm/key/certs missing)")
+                        } else {
+                            runCatching {
+                                val keyPair = parsePemKeyPair(pem) ?: return@runCatching
+                                val certs = certPems.map { parsePemCert(it) }
+                                if (certs.any { it == null }) {
+                                    malformedKey = true
+                                    Logger.w("Skipping keybox entry '$algo': one or more certificates failed to parse")
+                                    return@runCatching
+                                }
+                                val certList = certs.filterNotNull()
 
-                        val derivedAlgo = when (keyPair.private) {
-                            is RSAPrivateKey -> KeyProperties.KEY_ALGORITHM_RSA
-                            is ECPrivateKey -> KeyProperties.KEY_ALGORITHM_EC
-                            else -> return@runCatching
+                                val derivedAlgo = when (keyPair.private) {
+                                    is RSAPrivateKey -> KeyProperties.KEY_ALGORITHM_RSA
+                                    is ECPrivateKey -> KeyProperties.KEY_ALGORITHM_EC
+                                    else -> return@runCatching
+                                }
+
+                                val normalizedXmlAlgorithm =
+                                    when {
+                                        algo.contains("RSA", ignoreCase = true) -> KeyProperties.KEY_ALGORITHM_RSA
+                                        algo.contains("EC", ignoreCase = true) -> KeyProperties.KEY_ALGORITHM_EC
+                                        else -> algo
+                                    }
+                                if (normalizedXmlAlgorithm != derivedAlgo) {
+                                    Logger.w("Key algorithm mismatch in keybox.xml: tag='$algo' actual='$derivedAlgo'; using actual")
+                                }
+                                if (found.containsKey(derivedAlgo)) {
+                                    Logger.w("Duplicate $derivedAlgo keybox entry; later entry wins")
+                                }
+
+                                found[derivedAlgo] = CertificateBuilder.KeyboxData(keyPair, certList)
+                            }.onFailure {
+                                malformedKey = true
+                                Logger.w("Skipping keybox entry '$algo'", it)
+                            }
                         }
-
-                        found[derivedAlgo] = CertificateBuilder.KeyboxData(keyPair, certs)
                     }
                 }
             }
             event = parser.next()
+        }
+
+        if (malformedKey && ConfigManager.isStrictKeybox) {
+            Logger.w("strict_keybox=true and malformed entry detected; dropping entire keybox file")
+            return ConcurrentHashMap()
         }
 
         Logger.d("Parsed ${found.size} keys from keybox.xml")

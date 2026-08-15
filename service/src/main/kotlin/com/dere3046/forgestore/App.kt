@@ -48,6 +48,7 @@ object App {
         Logger.verbose = ConfigManager.isVerboseLog
         Logger.i("ForgeStore daemon starting (moddir=$modDir, sdk=${Build.VERSION.SDK_INT})")
         prepareEnvironment()
+        BootStateManager.apply()
         setupProviders()
         ConfigManager.initialize()
         initBootProperties()
@@ -213,18 +214,39 @@ object App {
         }
 
         val ksInterceptor = Keystore2Interceptor(teeKm, sbKm)
-        BinderInterceptor.register(backdoor, ksBinder, ksInterceptor)
+        BinderInterceptor.register(backdoor, ksBinder, ksInterceptor, ksInterceptor.interceptedCodes)
         Logger.i("Registered Keystore2Interceptor")
 
-        BinderInterceptor.register(backdoor, teeBinder, teeKm)
+        BinderInterceptor.register(backdoor, teeBinder, teeKm, teeKm.interceptedCodes)
         Logger.i("Registered KeyMintInterceptor for TEE")
 
         if (sbKm != null) {
             try {
                 val sbBinder = ksService.getSecurityLevel(SecurityLevel.STRONGBOX).asBinder()
-                BinderInterceptor.register(backdoor, sbBinder, sbKm)
+                BinderInterceptor.register(backdoor, sbBinder, sbKm, sbKm.interceptedCodes)
                 Logger.i("Registered KeyMintInterceptor for StrongBox")
             } catch (_: Exception) {}
+        }
+
+        registerMaintenanceInterceptor(backdoor, teeKm, sbKm)
+    }
+
+    private fun registerMaintenanceInterceptor(
+        backdoor: IBinder,
+        teeKm: KeyMintInterceptor,
+        sbKm: KeyMintInterceptor?,
+    ) {
+        try {
+            val maintenance = ServiceManager.getService("android.security.maintenance")
+            if (maintenance == null) {
+                Logger.w("Maintenance binder not found; skipping lifecycle parity")
+                return
+            }
+            val interceptor = Keystore2MaintenanceInterceptor(teeKm, sbKm)
+            BinderInterceptor.register(backdoor, maintenance, interceptor, interceptor.interceptedCodes)
+            Logger.i("Registered Keystore2MaintenanceInterceptor")
+        } catch (e: Exception) {
+            Logger.e("Failed to register maintenance interceptor", e)
         }
     }
 

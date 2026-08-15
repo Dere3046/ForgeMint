@@ -3,25 +3,31 @@ package android.system.keystore2;
 import android.os.Parcel;
 import android.os.Parcelable;
 
+import androidx.annotation.NonNull;
+
 public class KeyEntryResponse implements Parcelable {
-    public KeyMetadata metadata;
     public IKeystoreSecurityLevel iSecurityLevel;
+    public KeyMetadata metadata;
 
-    public static final Parcelable.Creator<KeyEntryResponse> CREATOR =
-            new Parcelable.Creator<>() {
-                public KeyEntryResponse createFromParcel(Parcel in) {
-                    return new KeyEntryResponse();
-                }
-                public KeyEntryResponse[] newArray(int size) {
-                    return new KeyEntryResponse[size];
-                }
-            };
+    public static final Creator<KeyEntryResponse> CREATOR = new Creator<KeyEntryResponse>() {
+        @Override
+        public KeyEntryResponse createFromParcel(Parcel in) {
+            throw new UnsupportedOperationException("STUB!");
+        }
+
+        @Override
+        public KeyEntryResponse[] newArray(int size) {
+            throw new UnsupportedOperationException("STUB!");
+        }
+    };
 
     @Override
-    public int describeContents() { return 0; }
+    public int describeContents() {
+        throw new UnsupportedOperationException("STUB!");
+    }
 
     @Override
-    public void writeToParcel(Parcel dest, int flags) {
+    public void writeToParcel(@NonNull Parcel parcel, int i) {
         throw new UnsupportedOperationException("STUB!");
     }
 }

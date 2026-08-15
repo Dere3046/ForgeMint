@@ -1,8 +1,8 @@
 package android.hardware.security.keymint;
 
 public @interface BlockMode {
-    int ECB = 1;
-    int CBC = 2;
-    int CTR = 3;
-    int GCM = 32;
+    public static final int ECB = 1;
+    public static final int CBC = 2;
+    public static final int CTR = 3;
+    public static final int GCM = 32;
 }

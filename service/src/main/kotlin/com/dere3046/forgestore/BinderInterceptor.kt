@@ -190,12 +190,21 @@ open class BinderInterceptor : Binder() {
             return null
         }
 
-        fun register(backdoor: IBinder, target: IBinder, interceptor: BinderInterceptor) {
+        fun register(
+            backdoor: IBinder,
+            target: IBinder,
+            interceptor: BinderInterceptor,
+            filteredCodes: IntArray = intArrayOf(),
+        ) {
             val data = Parcel.obtain()
             val reply = Parcel.obtain()
             try {
                 data.writeStrongBinder(target)
                 data.writeStrongBinder(interceptor)
+                data.writeInt(filteredCodes.size)
+                for (code in filteredCodes) {
+                    data.writeInt(code)
+                }
                 backdoor.transact(REGISTER_CODE, data, reply, 0)
             } catch (e: Exception) {
                 Logger.e("Failed to register interceptor", e)

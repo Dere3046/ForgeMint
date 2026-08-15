@@ -17,6 +17,8 @@ MODDIR=${0%/*}
 
 cd $MODDIR
 
+sed -i 's/^description=.*/description=[WAIT] ForgeStore KeyMint attestation hook/' "$MODDIR/module.prop"
+
 while true; do
     ./daemon "$MODDIR" || exit 1
     sleep 3

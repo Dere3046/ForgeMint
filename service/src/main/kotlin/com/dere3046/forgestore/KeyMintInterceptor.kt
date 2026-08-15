@@ -51,6 +51,52 @@ class KeyMintInterceptor(
     val nspaceToAlias = ConcurrentHashMap<String, String>()
     val metadataCache = ConcurrentHashMap<String, KeyMetadata>()
 
+    val interceptedCodes: IntArray
+        get() = listOfNotNull(
+            GENERATE_KEY_TRANSACTION.takeIf { it > 0 },
+            CREATE_OPERATION_TRANSACTION.takeIf { it > 0 },
+            IMPORT_KEY_TRANSACTION.takeIf { it > 0 },
+        ).toIntArray()
+
+    fun ownsSyntheticKey(keyId: StateManager.KeyIdentifier): Boolean {
+        return generatedKeys.containsKey(key(keyId.uid, keyId.alias))
+    }
+
+    fun clearNamespaceKeys(uid: Int) {
+        val victims = generatedKeys.entries
+            .filter { it.value.uid == uid }
+            .map { StateManager.KeyIdentifier(it.value.uid, it.value.alias) }
+        if (victims.isEmpty()) return
+        victims.forEach { cleanupKeyData(this, it) }
+        Logger.i("Cleared ${victims.size} synthetic keys for uid=$uid (maintenance.clearNamespace)")
+    }
+
+    fun clearAllGeneratedKeys(reason: String? = null) {
+        val count = generatedKeys.size
+        val reasonMessage = reason?.let { " due to $it" } ?: ""
+        generatedKeys.clear()
+        teeResponses.clear()
+        patchedChains.clear()
+        attestationKeys.clear()
+        importedKeys.clear()
+        usageCounters.clear()
+        nspaceToAlias.clear()
+        metadataCache.clear()
+        GeneratedKeyPersistence.deleteAll()
+        Logger.i("Cleared all cached keys ($count entries)$reasonMessage.")
+    }
+
+    fun migrateGeneratedKey(srcId: StateManager.KeyIdentifier, dstId: StateManager.KeyIdentifier) {
+        if (srcId == dstId || generatedKeys.containsKey(key(dstId.uid, dstId.alias))) return
+        val entry = generatedKeys.remove(key(srcId.uid, srcId.alias)) ?: return
+        generatedKeys[key(dstId.uid, dstId.alias)] = entry.copy(uid = dstId.uid, alias = dstId.alias)
+        if (attestationKeys.remove(srcId)) attestationKeys.add(dstId)
+        if (importedKeys.remove(srcId)) importedKeys.add(dstId)
+        StateManager.migrateGrants(srcId, dstId)
+        GeneratedKeyPersistence.remove(srcId.uid, srcId.alias)
+        Logger.i("Migrated synthetic key $srcId -> $dstId (maintenance.migrateKeyNamespace)")
+    }
+
     fun loadPersistedKeys(ksService: android.system.keystore2.IKeystoreService) {
         var count = 0
         for (lk in GeneratedKeyPersistence.loadAll(securityLevel)) {
@@ -127,6 +173,9 @@ class KeyMintInterceptor(
 
         val genParams = parseParams(data) ?: return TransactionResult.Continue
         val params = genParams.attestation
+        genParams.attestation.rawParams.forEach { param ->
+            KeyMintParameterLogger.logParameter(callingUid, txId, param)
+        }
 
         if (ConfigManager.shouldSkip(callingUid) && !params.isAttestKey) {
             return TransactionResult.ContinueAndSkipPost
@@ -138,7 +187,7 @@ class KeyMintInterceptor(
             (genParams.attestationKeyDescriptor != null && isKnownAttestationKey(callingUid, genParams.attestationKeyDescriptor))
 
         if (needsSoftwareGen) {
-            val result = tryGenerateSoftwareKey(params, genParams.descriptor, genParams.attestationKeyDescriptor, callingUid)
+            val result = tryGenerateSoftwareKey(params, genParams.descriptor, genParams.attestationKeyDescriptor, callingUid, txId)
             if (result != null) {
                 Logger.i("Software key generated for UID=$callingUid")
                 return result
@@ -175,7 +224,7 @@ class KeyMintInterceptor(
 
         if (code == GENERATE_KEY_TRANSACTION) {
             Logger.w("PostGen: entering handlePostGenerateKey uid=$callingUid")
-            return handlePostGenerateKey(callingUid, data, reply)
+            return handlePostGenerateKey(callingUid, txId, data, reply)
         }
 
         if (code == CREATE_OPERATION_TRANSACTION) {
@@ -189,7 +238,7 @@ class KeyMintInterceptor(
         return TransactionResult.Skip
     }
 
-    private fun handlePostGenerateKey(callingUid: Int, data: Parcel, reply: Parcel): TransactionResult {
+    private fun handlePostGenerateKey(callingUid: Int, txId: Long, data: Parcel, reply: Parcel): TransactionResult {
         try {
             reply.readException()
             val metadata = reply.readTypedObject(KeyMetadata.CREATOR) ?: return TransactionResult.Skip
@@ -223,6 +272,7 @@ class KeyMintInterceptor(
             Logger.d("PATCH mode post-generateKey for UID=$callingUid")
             cleanupKeyData(this, keyId)
             val patchedChain = AttestationPatcher.patchCertificateChain(originalChain, callingUid)
+            AttestationDossier.log(callingUid, txId, "PATCH", patchedChain.toList())
 
             patchedChains[keyId] = patchedChain
             val levelBinder = IKeystoreSecurityLevel.Stub.asInterface(originalBinder)
@@ -236,6 +286,7 @@ class KeyMintInterceptor(
             CertificateHelper.updateCertificateChain(callingUid, metadata, patchedChain)
                 .onFailure { e -> Logger.e("updateCertificateChain failed", e) }
             metadata.authorizations = AttestationPatcher.patchAuthorizations(metadata.authorizations, callingUid)
+            AttestationDossier.logAuthShape(callingUid, txId, metadata.authorizations)
 
             val override = Parcel.obtain()
             override.writeNoException()
@@ -624,6 +675,7 @@ class KeyMintInterceptor(
         originalDescriptor: KeyDescriptor,
         attestKeyDescriptor: KeyDescriptor?,
         uid: Int,
+        txId: Long,
     ): TransactionResult? {
         Logger.d("tryGenerateSoftwareKey algo=${params.algorithm} keySize=${params.keySize} ecCurve=${params.ecCurve} uid=$uid")
 
@@ -635,7 +687,7 @@ class KeyMintInterceptor(
         }
 
         if (params.isAttestKey) {
-            return tryGenerateAttestKey(params, originalDescriptor, uid, startNanos)
+            return tryGenerateAttestKey(params, originalDescriptor, uid, startNanos, txId)
         }
 
         if (params.isSymmetric) {
@@ -693,6 +745,7 @@ class KeyMintInterceptor(
             Logger.w("GenKeyFailed: cert chain generation failed")
             return null
         }
+        AttestationDossier.log(uid, txId, "FORGE", chain)
 
         val nspace = SecureRandom().nextLong()
         val descriptor = KeyDescriptor().apply {
@@ -718,6 +771,8 @@ class KeyMintInterceptor(
             p.recycle()
             normalized
         }
+
+        AttestationDossier.logAuthShape(uid, txId, metadata.authorizations)
 
         val kId = key(uid, originalDescriptor.alias ?: "")
         generatedKeys[kId] = StateManager.KeyEntry(
@@ -746,6 +801,7 @@ class KeyMintInterceptor(
         descriptor: KeyDescriptor,
         uid: Int,
         startNanos: Long,
+        txId: Long,
     ): TransactionResult? {
         Logger.d("tryGenerateAttestKey algo=${params.algorithm} uid=$uid")
 
@@ -773,6 +829,7 @@ class KeyMintInterceptor(
             }
         }
         if (chain == null) return null
+        AttestationDossier.log(uid, txId, "FORGE-attestkey", chain)
 
         val nspace = SecureRandom().nextLong()
         val keyDescriptor = KeyDescriptor().apply {
@@ -798,6 +855,8 @@ class KeyMintInterceptor(
             p.recycle()
             normalized
         }
+
+        AttestationDossier.logAuthShape(uid, txId, metadata.authorizations)
 
         val kId = key(uid, descriptor.alias ?: "")
         generatedKeys[kId] = StateManager.KeyEntry(

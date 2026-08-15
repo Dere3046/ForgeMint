@@ -197,6 +197,15 @@ object GeneratedKeyPersistence {
         if (file.exists()) file.delete()
     }
 
+    fun deleteAll() {
+        val dir = File(DIR)
+        if (dir.exists() && dir.isDirectory) {
+            dir.listFiles()?.forEach { file ->
+                if (file.isFile) file.delete()
+            }
+        }
+    }
+
     fun rePersist(entry: StateManager.KeyEntry) {
         try {
             store(entry)

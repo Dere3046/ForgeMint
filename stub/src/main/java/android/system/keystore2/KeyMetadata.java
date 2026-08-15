@@ -3,31 +3,35 @@ package android.system.keystore2;
 import android.os.Parcel;
 import android.os.Parcelable;
 
-import androidx.annotation.Nullable;
+import androidx.annotation.NonNull;
 
 public class KeyMetadata implements Parcelable {
-    public int keySecurityLevel;
-    public KeyDescriptor key;
-    public long modificationTimeMs = 0;
     public Authorization[] authorizations;
-    @Nullable public byte[] certificate;
-    @Nullable public byte[] certificateChain;
+    public byte[] certificate;
+    public byte[] certificateChain;
+    public KeyDescriptor key;
+    public int keySecurityLevel = 0;
+    public long modificationTimeMs = 0;
 
-    public static final Parcelable.Creator<KeyMetadata> CREATOR =
-            new Parcelable.Creator<>() {
-                public KeyMetadata createFromParcel(Parcel in) {
-                    return new KeyMetadata();
-                }
-                public KeyMetadata[] newArray(int size) {
-                    return new KeyMetadata[size];
-                }
-            };
+    public static final Creator<KeyMetadata> CREATOR = new Creator<KeyMetadata>() {
+        @Override
+        public KeyMetadata createFromParcel(Parcel in) {
+            throw new UnsupportedOperationException("STUB!");
+        }
+
+        @Override
+        public KeyMetadata[] newArray(int size) {
+            throw new UnsupportedOperationException("STUB!");
+        }
+    };
 
     @Override
-    public int describeContents() { return 0; }
+    public int describeContents() {
+        throw new UnsupportedOperationException("STUB!");
+    }
 
     @Override
-    public void writeToParcel(Parcel dest, int flags) {
+    public void writeToParcel(@NonNull Parcel parcel, int i) {
         throw new UnsupportedOperationException("STUB!");
     }
 }

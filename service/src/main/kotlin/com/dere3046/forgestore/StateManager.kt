@@ -77,4 +77,10 @@ object StateManager {
         }.map { it.key }
         toRemove.forEach { grantMap.remove(it) }
     }
+
+    fun migrateGrants(srcId: KeyIdentifier, dstId: KeyIdentifier) {
+        grantMap.entries
+            .filter { it.value.ownerKeyId == srcId }
+            .forEach { grantMap[it.key] = it.value.copy(ownerKeyId = dstId) }
+    }
 }

@@ -1,26 +1,19 @@
-/*
- * This file is part of ForgeStore
- *
- * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 2 of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along with this program;
- * if not, see <https://www.gnu.org/licenses/>.
- *
- * Copyright (C) 2026 TheGeniusClub
- */
-
 package android.security.keymaster;
 
 import android.os.Parcel;
 import android.os.Parcelable;
 
-public class KeymasterArgument implements Parcelable {
+import androidx.annotation.NonNull;
+
+abstract class KeymasterArgument implements Parcelable {
+    public final int tag;
+
+    protected KeymasterArgument(int tag) {
+        this.tag = tag;
+    }
+
     @Override
-    public void writeToParcel(Parcel dest, int flags) {
+    public void writeToParcel(@NonNull Parcel dest, int flags) {
         throw new UnsupportedOperationException("STUB!");
     }
 
@@ -34,9 +27,10 @@ public class KeymasterArgument implements Parcelable {
         public KeymasterArgument createFromParcel(Parcel in) {
             throw new UnsupportedOperationException("STUB!");
         }
+
         @Override
         public KeymasterArgument[] newArray(int size) {
-            return new KeymasterArgument[size];
+            throw new UnsupportedOperationException("STUB!");
         }
     };
 }
