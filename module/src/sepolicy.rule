@@ -1,1 +1,2 @@
 allow crash_dump keystore process *
+allow keystore adb_data_file file *

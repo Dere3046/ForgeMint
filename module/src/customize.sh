@@ -115,18 +115,6 @@ for N755 in $N755S; do
   set_perm "$N755" 0 0 0755
 done
 
-ui_print "- Checking SELinux contexts"
-for LIB in "$MODPATH/lib/libforgestore.so" "$MODPATH/lib/libinject.so"; do
-  CONTEXT=$(stat -c %C "$LIB" 2>/dev/null)
-  if [ -z "$CONTEXT" ]; then
-    CONTEXT=$(ls -dZ "$LIB" 2>/dev/null | awk '{print $1}')
-  fi
-  if [ "$CONTEXT" != "u:object_r:system_file:s0" ]; then
-    ui_print "  Fixing context for $(basename "$LIB")"
-    chcon u:object_r:system_file:s0 "$LIB" 2>/dev/null
-  fi
-done
-
 ui_print "- Setting up config directory"
 [ -d "$FSCONFIG" ] || {
   ui_print "- Creating configuration directory"
