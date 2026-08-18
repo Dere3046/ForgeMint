@@ -114,10 +114,7 @@ object ConfigManager {
 
     fun shouldPatch(uid: Int): Boolean = getModeForUid(uid) == Mode.PATCH
 
-    fun shouldSkip(uid: Int): Boolean {
-        val hasMode = getModeForUid(uid) != null
-        return if (isWhitelistMode) hasMode else !hasMode
-    }
+    fun shouldSkip(uid: Int): Boolean = getModeForUid(uid) == null
 
     fun getPatchLevelForUid(uid: Int): CustomPatchLevel? = globalPatchLevel
 
@@ -135,14 +132,23 @@ object ConfigManager {
     }
 
     private fun getModeForUid(uid: Int): Mode? {
-        uidModes[uid]?.let { return resolveAuto(it) }
+        val explicit = getExplicitModeForUid(uid)
+        return if (isWhitelistMode) {
+            if (explicit != null) null else resolveAuto(Mode.AUTO)
+        } else {
+            explicit?.let { resolveAuto(it) }
+        }
+    }
+
+    private fun getExplicitModeForUid(uid: Int): Mode? {
+        uidModes[uid]?.let { return it }
         val packages = uidPackageCache[uid] ?: getPackagesForUid(uid)
         if (packages.isEmpty()) return null
         if (isTeBroken == null) loadTeeStatus()
         val userId = uid / 100000
         for (pkg in packages) {
             val key = if (userId == 0) pkg else "$pkg@$userId"
-            packageModes[key]?.let { return resolveAuto(it) }
+            packageModes[key]?.let { return it }
         }
         return null
     }
