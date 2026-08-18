@@ -80,12 +80,11 @@ full_attest_chain=false
 | `diagnostic_file` | logcat only | also write per-UID NDJSON diagnostics |
 | `full_attest_chain` | attest key returns leaf only, framework appends chain | attest key returns complete chain |
 
-## Thanks
+## Acknowledgement
 
 - [RaPLT](https://github.com/Dere3046/RaPLT)
+- [TEESimulator](https://github.com/JingMatrix/TEESimulator)
 - [TrickyStoreOSS](https://github.com/beakthoven/TrickyStoreOSS)
-- [0x7B00](https://github.com/0x7B00)
-- [XtrLumen](https://github.com/XtrLumen)
 
 ## License
 
