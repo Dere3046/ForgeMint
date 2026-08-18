@@ -9,9 +9,13 @@ Work dir: `/data/adb/forge_store/` — created on install. All files hot-reloade
 ### 1. target.txt — Package modes
 
 ```
-<package>!     Generate mode — full software key + certificate chain
-<package>?     Patch mode — hardware key + certificate replacement
-<package>      Auto mode — TEE alive → Patch, TEE dead → Generate
+<package>!       Generate mode — full software key + certificate chain
+<package>?       Patch mode — hardware key + certificate replacement
+<package>        Auto mode — TEE alive → Patch, TEE dead → Generate
+<package>@N      Target package inside Android user N
+uid:<uid>        Target a raw caller uid
+uid:<uid>!       Generate mode for a raw uid
+uid:<uid>?       Patch mode for a raw uid
 ```
 
 Blank lines and `#` comments ignored. First matching package wins.

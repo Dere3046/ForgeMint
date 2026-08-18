@@ -56,6 +56,7 @@ object ConfigManager {
     private val keyboxFile = File(configRoot, KEYBOX_FILE)
 
     @Volatile private var packageModes = mapOf<String, Mode>()
+    @Volatile private var uidModes = mapOf<Int, Mode>()
     @Volatile private var isTeBroken: Boolean? = null
     @Volatile private var globalPatchLevel: CustomPatchLevel? = null
     private val uidPackageCache = ConcurrentHashMap<Int, List<String>>()
@@ -75,7 +76,7 @@ object ConfigManager {
         loadSecurityPatchLevels()
         loadTeeStatus()
         startObserver()
-        Logger.i("Config initialized: ${packageModes.size} packages, global patch level: ${globalPatchLevel != null}")
+        Logger.i("Config initialized: ${packageModes.size} packages, ${uidModes.size} uids, global patch level: ${globalPatchLevel != null}")
     }
 
     private fun loadConfig() {
@@ -134,19 +135,23 @@ object ConfigManager {
     }
 
     private fun getModeForUid(uid: Int): Mode? {
+        uidModes[uid]?.let { return resolveAuto(it) }
         val packages = uidPackageCache[uid] ?: getPackagesForUid(uid)
         if (packages.isEmpty()) return null
         if (isTeBroken == null) loadTeeStatus()
+        val userId = uid / 100000
         for (pkg in packages) {
-            packageModes[pkg]?.let { mode ->
-                return when (mode) {
-                    Mode.AUTO -> if (isTeBroken == true) Mode.GENERATE else Mode.PATCH
-                    else -> mode
-                }
-            }
+            val key = if (userId == 0) pkg else "$pkg@$userId"
+            packageModes[key]?.let { return resolveAuto(it) }
         }
         return null
     }
+
+    private fun resolveAuto(mode: Mode): Mode =
+        when (mode) {
+            Mode.AUTO -> if (isTeBroken == true) Mode.GENERATE else Mode.PATCH
+            else -> mode
+        }
 
     private fun loadTargetPackages() {
         if (!targetFile.exists()) {
@@ -154,27 +159,45 @@ object ConfigManager {
             return
         }
         try {
-            val newModes = mutableMapOf<String, Mode>()
+            val newPackageModes = mutableMapOf<String, Mode>()
+            val newUidModes = mutableMapOf<Int, Mode>()
             targetFile.readLines().forEach { line ->
                 val trimmed = line.trim()
                 if (trimmed.isEmpty() || trimmed.startsWith("#")) return@forEach
-                when {
-                    trimmed.endsWith("!") -> {
-                        val pkg = trimmed.removeSuffix("!").trim()
-                        if (pkg.isNotEmpty()) newModes[pkg] = Mode.GENERATE
+                var entry = trimmed
+                val mode =
+                    when {
+                        trimmed.endsWith("!") -> {
+                            entry = trimmed.dropLast(1).trim()
+                            Mode.GENERATE
+                        }
+                        trimmed.endsWith("?") -> {
+                            entry = trimmed.dropLast(1).trim()
+                            Mode.PATCH
+                        }
+                        else -> Mode.AUTO
                     }
-                    trimmed.endsWith("?") -> {
-                        val pkg = trimmed.removeSuffix("?").trim()
-                        if (pkg.isNotEmpty()) newModes[pkg] = Mode.PATCH
+                if (entry.startsWith("uid:")) {
+                    entry.substring(4).trim().toIntOrNull()?.let { uid ->
+                        newUidModes[uid] = mode
                     }
-                    else -> {
-                        if (trimmed.isNotEmpty()) newModes[trimmed] = Mode.AUTO
+                } else {
+                    val at = entry.indexOf('@')
+                    if (at >= 0) {
+                        val pkg = entry.substring(0, at).trim()
+                        val user = entry.substring(at + 1).trim().toIntOrNull()
+                        if (pkg.isNotEmpty() && user != null && user >= 0) {
+                            newPackageModes[if (user == 0) pkg else "$pkg@$user"] = mode
+                        }
+                    } else if (entry.isNotEmpty()) {
+                        newPackageModes[entry] = mode
                     }
                 }
             }
-            packageModes = newModes
+            packageModes = newPackageModes
+            uidModes = newUidModes
             uidPackageCache.clear()
-            Logger.d("Loaded ${newModes.size} package modes")
+            Logger.d("Loaded ${newPackageModes.size} package modes, ${newUidModes.size} uid modes")
         } catch (e: Exception) {
             Logger.e("Failed to load target.txt", e)
         }
