@@ -172,8 +172,6 @@ class Keystore2Interceptor(
                     reply.writeTypedObject(teeResp, 0)
                     return TransactionResult.OverrideReply(reply)
                 }
-                val metadataResult = handleGetKeyEntryByMetadata(descriptor, uid)
-                if (metadataResult != null) return metadataResult
             }
 
             val entry = descriptor.alias?.let { findEntry(uid, it) }
@@ -439,7 +437,15 @@ class Keystore2Interceptor(
 
             val keyId = keyDescriptor.alias?.let { alias ->
                 StateManager.KeyIdentifier(uid, alias)
-            }
+            } ?: if (keyDescriptor.domain == Domain.KEY_ID) {
+                val nspace = keyDescriptor.nspace
+                teeInterceptor.teeResponses.entries.find {
+                    it.key.uid == uid && it.value.metadata?.key?.nspace == nspace
+                }?.key
+                    ?: strongBoxInterceptor?.teeResponses?.entries?.find {
+                        it.key.uid == uid && it.value.metadata?.key?.nspace == nspace
+                    }?.key
+            } else null
 
             val patchedChain: Array<Certificate>
             if (keyId != null) {
