@@ -307,29 +307,29 @@ object AttestationPatcher {
         val sequence = ASN1Sequence.getInstance(extension.extnValue.octets)
         val allFields = sequence.toArray()
 
-        val softwareCandidate = allFields[AttestationConstants.KEY_DESCRIPTION_SOFTWARE_ENFORCED_INDEX]
-        val teeCandidate = allFields[AttestationConstants.KEY_DESCRIPTION_TEE_ENFORCED_INDEX]
-        if (sequenceContainsRootOfTrust(softwareCandidate) &&
-            !sequenceContainsRootOfTrust(teeCandidate)
-        ) {
-            allFields[AttestationConstants.KEY_DESCRIPTION_SOFTWARE_ENFORCED_INDEX] = teeCandidate
-            allFields[AttestationConstants.KEY_DESCRIPTION_TEE_ENFORCED_INDEX] = softwareCandidate
-        }
-
+        val softwareEnforced = allFields[AttestationConstants.KEY_DESCRIPTION_SOFTWARE_ENFORCED_INDEX] as? ASN1Sequence
         val teeEnforced = allFields[AttestationConstants.KEY_DESCRIPTION_TEE_ENFORCED_INDEX] as ASN1Sequence
+        val softwareElements = softwareEnforced?.toArray()?.toList()
+        val teeElements = teeEnforced.toArray().toList()
 
         var originalRootOfTrust: ASN1Encodable? = null
-        val teeEnforcedMap = mutableMapOf<Int, ASN1TaggedObject>()
-
-        for (element in teeEnforced) {
-            val tagged = element as ASN1TaggedObject
+        for (element in teeElements) {
+            val tagged = element as? ASN1TaggedObject ?: continue
             if (tagged.tagNo == AttestationConstants.TAG_ROOT_OF_TRUST) {
                 originalRootOfTrust = tagged.baseObject.toASN1Primitive()
-            } else {
-                teeEnforcedMap[tagged.tagNo] = tagged
+                break
             }
         }
-        return ParsedAttestation(allFields, teeEnforcedMap, originalRootOfTrust)
+        if (originalRootOfTrust == null) {
+            for (element in softwareElements.orEmpty()) {
+                val tagged = element as? ASN1TaggedObject ?: continue
+                if (tagged.tagNo == AttestationConstants.TAG_ROOT_OF_TRUST) {
+                    originalRootOfTrust = tagged.baseObject.toASN1Primitive()
+                    break
+                }
+            }
+        }
+        return ParsedAttestation(allFields, teeElements, softwareElements, originalRootOfTrust)
     }
 
     private fun sequenceContainsRootOfTrust(seq: ASN1Encodable): Boolean {
@@ -340,25 +340,32 @@ object AttestationPatcher {
     }
 
     private fun createPatchedAttestationExtension(parsed: ParsedAttestation, uid: Int): Extension {
-        val (allFields, teeEnforcedMap, originalRootOfTrust) = parsed
+        val (allFields, teeElements, softwareElements, originalRootOfTrust) = parsed
+
+        val overrides = mutableMapOf<Int, DERTaggedObject>()
+        val removeTags = mutableSetOf<Int>()
 
         val newRootOfTrust = AttestationBuilder.buildRootOfTrust(originalRootOfTrust)
-        teeEnforcedMap[AttestationConstants.TAG_ROOT_OF_TRUST] =
+        overrides[AttestationConstants.TAG_ROOT_OF_TRUST] =
             DERTaggedObject(true, AttestationConstants.TAG_ROOT_OF_TRUST, newRootOfTrust)
 
         val simulatedProperties = AttestationBuilder.getSimulatedHardwareProperties(uid)
         for ((tag, value) in simulatedProperties) {
             if (value != null) {
-                teeEnforcedMap[tag] = value
+                overrides[tag] = value
             } else {
-                teeEnforcedMap.remove(tag)
+                removeTags.add(tag)
             }
         }
 
-        val sortedElements = teeEnforcedMap.values.sortedBy { it.tagNo }
-        val sortedTeeEnforced = DERSequence(sortedElements.toTypedArray())
+        val patchedSoftware = patchAuthorizationList(softwareElements.orEmpty(), overrides, removeTags)
+        val (patchedTee, _) = patchAuthorizationList(teeElements, overrides, removeTags, insertMissing = true)
 
-        allFields[AttestationConstants.KEY_DESCRIPTION_TEE_ENFORCED_INDEX] = sortedTeeEnforced
+        allFields[AttestationConstants.KEY_DESCRIPTION_SOFTWARE_ENFORCED_INDEX] =
+            DERSequence(patchedSoftware.toTypedArray())
+        allFields[AttestationConstants.KEY_DESCRIPTION_TEE_ENFORCED_INDEX] =
+            DERSequence(patchedTee.toTypedArray())
+
         val patchedSequence = DERSequence(allFields)
         val patchedOctets = DEROctetString(patchedSequence)
 
@@ -368,9 +375,46 @@ object AttestationPatcher {
         )
     }
 
+    private fun patchAuthorizationList(
+        elements: List<ASN1Encodable>,
+        overrides: Map<Int, DERTaggedObject>,
+        removeTags: Set<Int>,
+        insertMissing: Boolean = false,
+    ): Pair<List<ASN1Encodable>, Set<Int>> {
+        val seen = mutableSetOf<Int>()
+        val out = mutableListOf<ASN1Encodable>()
+
+        for (element in elements) {
+            val tagged = element as? DERTaggedObject
+            val tag = tagged?.tagNo
+            if (tag != null && tag in removeTags) continue
+            if (tag != null && tag in overrides) {
+                out.add(overrides[tag]!!)
+                seen.add(tag)
+            } else {
+                out.add(element)
+            }
+        }
+
+        if (insertMissing) {
+            for (tag in overrides.keys.sorted()) {
+                if (tag in seen) continue
+                val elem = overrides[tag]!!
+                val index = out.indexOfFirst {
+                    ((it as? DERTaggedObject)?.tagNo ?: Int.MAX_VALUE) > tag
+                }
+                if (index < 0) out.add(elem) else out.add(index, elem)
+                seen.add(tag)
+            }
+        }
+
+        return out to seen
+    }
+
     private data class ParsedAttestation(
         val allFields: Array<ASN1Encodable>,
-        val teeEnforcedMap: MutableMap<Int, ASN1TaggedObject>,
+        val teeEnforcedElements: List<ASN1Encodable>,
+        val softwareEnforcedElements: List<ASN1Encodable>?,
         val rootOfTrust: ASN1Encodable?,
     )
 

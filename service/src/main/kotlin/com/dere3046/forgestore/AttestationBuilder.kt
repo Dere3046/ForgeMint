@@ -66,8 +66,13 @@ object AttestationBuilder {
 
     fun buildRootOfTrust(originalRootOfTrust: ASN1Encodable? = null): DERSequence {
         val rootElements = arrayOfNulls<ASN1Encodable>(4)
+        val normalizedBootKey = if (bootKey.size > 32) {
+            java.security.MessageDigest.getInstance("SHA-256").digest(bootKey)
+        } else {
+            bootKey
+        }
         rootElements[AttestationConstants.ROOT_OF_TRUST_VERIFIED_BOOT_KEY_INDEX] =
-            DEROctetString(bootKey)
+            DEROctetString(normalizedBootKey)
         rootElements[AttestationConstants.ROOT_OF_TRUST_DEVICE_LOCKED_INDEX] =
             ASN1Boolean.TRUE
         rootElements[AttestationConstants.ROOT_OF_TRUST_VERIFIED_BOOT_STATE_INDEX] =
