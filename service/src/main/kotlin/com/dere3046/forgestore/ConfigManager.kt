@@ -46,10 +46,10 @@ object ConfigManager {
         "strict_keybox" to false,
         "diagnostic_file" to false,
         "full_attest_chain" to false,
-        "harvester_enabled" to false,
-        "harvester_override" to false,
+        "harvester_enabled" to true,
+        "harvester_override" to true,
         "harvester_telephony" to false,
-        "harvester_strongbox" to false,
+        "harvester_strongbox" to true,
     )
     private val intConfigDefaults = mapOf(
         "keybox_min_certs" to 2,
