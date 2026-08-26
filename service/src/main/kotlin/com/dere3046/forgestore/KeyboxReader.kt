@@ -132,9 +132,9 @@ object KeyboxReader {
                         val pem = currentPrivateKeyPem
                         val certPems = currentCerts.toList()
 
-                        if (algo == null || pem == null || certPems.isEmpty()) {
+                        if (algo == null || pem == null || certPems.size < 2) {
                             malformedKey = true
-                            Logger.w("Skipping malformed keybox entry (algorithm/key/certs missing)")
+                            Logger.w("Skipping keybox entry '$algo': need key and at least 2 certificates, found ${certPems.size}")
                         } else {
                             runCatching {
                                 val keyPair = parsePemKeyPair(pem) ?: return@runCatching

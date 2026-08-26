@@ -206,6 +206,20 @@ object GeneratedKeyPersistence {
         }
     }
 
+    fun cleanupOrphans() {
+        val dir = File(DIR)
+        if (!dir.exists() || !dir.isDirectory) return
+        dir.listFiles()?.forEach { file ->
+            if (file.extension == "tmp") return@forEach
+            val loaded = load(file) ?: return@forEach
+            val packages = ConfigManager.getPackagesForUid(loaded.uid)
+            if (packages.isEmpty()) {
+                file.delete()
+                Logger.d("persist: removed orphan key ${file.name} (uid=${loaded.uid})")
+            }
+        }
+    }
+
     fun rePersist(entry: StateManager.KeyEntry) {
         try {
             store(entry)
