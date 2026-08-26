@@ -73,10 +73,10 @@ strict_keybox=false
 diagnostic_file=false
 full_attest_chain=false
 keybox_min_certs=2
-harvester_enabled=true
-harvester_override=true
+harvester_enabled=false
+harvester_override=false
 harvester_telephony=false
-harvester_strongbox=true
+harvester_strongbox=false
 harvester_file=/data/adb/forge_store/device_profile.json
 ```
 
@@ -93,10 +93,10 @@ harvester_file=/data/adb/forge_store/device_profile.json
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `keybox_min_certs` | `2` | Minimum certificates required per keybox entry (applies to exact and fallback). Set `1` to allow single-cert/self-signed-like keyboxes. |
-| `harvester_enabled` | `true` | Enable device profile harvest on startup |
-| `harvester_override` | `true` | Use harvested device IDs to fill/override attestation IDs |
+| `harvester_enabled` | `false` | Enable device profile harvest on startup |
+| `harvester_override` | `false` | Use harvested device IDs to fill/override attestation IDs |
 | `harvester_telephony` | `false` | Read serial/imei/meid from system when the attestation leaf omits them |
-| `harvester_strongbox` | `true` | Probe StrongBox availability and attestation version |
+| `harvester_strongbox` | `false` | Probe StrongBox availability and attestation version |
 | `harvester_file` | `/data/adb/forge_store/device_profile.json` | Where the harvested device profile is stored |
 
 Generated keys are persisted under `/data/adb/forge_store/keys/` as `<uid>_<alias>_<hash>.key` so downstream tooling can identify them. Legacy hash-only files are still loaded and are removed on the next write.
