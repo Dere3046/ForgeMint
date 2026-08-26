@@ -46,8 +46,20 @@ object ConfigManager {
         "strict_keybox" to false,
         "diagnostic_file" to false,
         "full_attest_chain" to false,
+        "harvester_enabled" to true,
+        "harvester_override" to true,
+        "harvester_telephony" to false,
+        "harvester_strongbox" to true,
+    )
+    private val intConfigDefaults = mapOf(
+        "keybox_min_certs" to 2,
+    )
+    private val stringConfigDefaults = mapOf(
+        "harvester_file" to "/data/adb/forge_store/device_profile.json",
     )
     private val configMap = ConcurrentHashMap<String, Boolean>()
+    private val intConfigMap = ConcurrentHashMap<String, Int>()
+    private val stringConfigMap = ConcurrentHashMap<String, String>()
 
     private val configRoot = File(CONFIG_DIR)
     private val targetFile = File(configRoot, TARGET_FILE)
@@ -81,6 +93,8 @@ object ConfigManager {
 
     private fun loadConfig() {
         configDefaults.entries.forEach { configMap.put(it.key, it.value) }
+        intConfigDefaults.entries.forEach { intConfigMap.put(it.key, it.value) }
+        stringConfigDefaults.entries.forEach { stringConfigMap.put(it.key, it.value) }
         val configFile = File(configRoot, CONFIG_FILE)
         if (!configFile.exists()) return
         try {
@@ -93,6 +107,10 @@ object ConfigManager {
                 val value = trimmed.substring(eqIdx + 1).trim()
                 if (key in configDefaults) {
                     configMap[key] = value == "true"
+                } else if (key in intConfigDefaults) {
+                    value.toIntOrNull()?.let { intConfigMap[key] = it }
+                } else if (key in stringConfigDefaults) {
+                    stringConfigMap[key] = value
                 }
             }
         } catch (e: Exception) {
@@ -102,6 +120,10 @@ object ConfigManager {
 
     private fun getBool(key: String): Boolean = configMap[key] ?: configDefaults[key] ?: false
 
+    private fun getInt(key: String): Int = intConfigMap[key] ?: intConfigDefaults[key] ?: 0
+
+    private fun getString(key: String): String = stringConfigMap[key] ?: stringConfigDefaults[key] ?: ""
+
     val isDebugEnabled: Boolean get() = getBool("debug")
     val isVerboseLog: Boolean get() = getBool("verbose_log")
     val isFallbackEnabled: Boolean get() = getBool("fallback")
@@ -109,6 +131,13 @@ object ConfigManager {
     val isStrictKeybox: Boolean get() = getBool("strict_keybox")
     val isDiagnosticFile: Boolean get() = getBool("diagnostic_file")
     val isFullAttestChain: Boolean get() = getBool("full_attest_chain")
+    val keyboxMinCerts: Int get() = getInt("keybox_min_certs").coerceAtLeast(1)
+
+    val harvesterEnabled: Boolean get() = getBool("harvester_enabled")
+    val harvesterOverride: Boolean get() = getBool("harvester_override")
+    val harvesterTelephony: Boolean get() = getBool("harvester_telephony")
+    val harvesterStrongBox: Boolean get() = getBool("harvester_strongbox")
+    val harvesterFile: String get() = getString("harvester_file")
 
     fun shouldGenerate(uid: Int): Boolean = getModeForUid(uid) == Mode.GENERATE
 

@@ -358,13 +358,18 @@ object AttestationPatcher {
             }
         }
 
+        val idOverrides = buildDeviceIdOverrides(Harvester.harvestedDeviceIds())
+
         val patchedSoftware = patchAuthorizationList(softwareElements.orEmpty(), overrides, removeTags)
         val (patchedTee, _) = patchAuthorizationList(teeElements, overrides, removeTags, insertMissing = true)
 
+        val finalSoftware = replaceOnly(patchedSoftware, idOverrides)
+        val finalTee = replaceOnly(patchedTee, idOverrides)
+
         allFields[AttestationConstants.KEY_DESCRIPTION_SOFTWARE_ENFORCED_INDEX] =
-            DERSequence(patchedSoftware.toTypedArray())
+            DERSequence(finalSoftware.toTypedArray())
         allFields[AttestationConstants.KEY_DESCRIPTION_TEE_ENFORCED_INDEX] =
-            DERSequence(patchedTee.toTypedArray())
+            DERSequence(finalTee.toTypedArray())
 
         val patchedSequence = DERSequence(allFields)
         val patchedOctets = DEROctetString(patchedSequence)
@@ -409,6 +414,33 @@ object AttestationPatcher {
         }
 
         return out to seen
+    }
+
+    private fun buildDeviceIdOverrides(ids: Harvester.DeviceIds): Map<Int, DERTaggedObject> {
+        val map = mutableMapOf<Int, DERTaggedObject>()
+        fun put(tag: Int, value: ByteArray?) {
+            if (value != null) {
+                map[tag] = DERTaggedObject(true, tag, DEROctetString(value))
+            }
+        }
+        put(AttestationConstants.TAG_ATTESTATION_ID_BRAND, ids.brand)
+        put(AttestationConstants.TAG_ATTESTATION_ID_DEVICE, ids.device)
+        put(AttestationConstants.TAG_ATTESTATION_ID_PRODUCT, ids.product)
+        put(AttestationConstants.TAG_ATTESTATION_ID_SERIAL, ids.serial)
+        put(AttestationConstants.TAG_ATTESTATION_ID_IMEI, ids.imei)
+        put(AttestationConstants.TAG_ATTESTATION_ID_MEID, ids.meid)
+        put(AttestationConstants.TAG_ATTESTATION_ID_MANUFACTURER, ids.manufacturer)
+        put(AttestationConstants.TAG_ATTESTATION_ID_MODEL, ids.model)
+        put(AttestationConstants.TAG_ATTESTATION_ID_SECOND_IMEI, ids.secondImei)
+        return map
+    }
+
+    private fun replaceOnly(elements: List<ASN1Encodable>, overrides: Map<Int, DERTaggedObject>): List<ASN1Encodable> {
+        return elements.map { element ->
+            val tagged = element as? DERTaggedObject
+            val tag = tagged?.tagNo
+            if (tag != null && tag in overrides) overrides[tag]!! else element
+        }
     }
 
     private data class ParsedAttestation(

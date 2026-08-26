@@ -66,10 +66,13 @@ object AttestationBuilder {
 
     fun buildRootOfTrust(originalRootOfTrust: ASN1Encodable? = null): DERSequence {
         val rootElements = arrayOfNulls<ASN1Encodable>(4)
-        val normalizedBootKey = if (bootKey.size > 32) {
-            java.security.MessageDigest.getInstance("SHA-256").digest(bootKey)
+        val profile = if (ConfigManager.harvesterEnabled) Harvester.current() else null
+        val effectiveBootKey = profile?.verifiedBootKey ?: bootKey
+        val effectiveBootHash = profile?.verifiedBootHash ?: bootHash
+        val normalizedBootKey = if (effectiveBootKey.size > 32) {
+            java.security.MessageDigest.getInstance("SHA-256").digest(effectiveBootKey)
         } else {
-            bootKey
+            effectiveBootKey
         }
         rootElements[AttestationConstants.ROOT_OF_TRUST_VERIFIED_BOOT_KEY_INDEX] =
             DEROctetString(normalizedBootKey)
@@ -78,7 +81,7 @@ object AttestationBuilder {
         rootElements[AttestationConstants.ROOT_OF_TRUST_VERIFIED_BOOT_STATE_INDEX] =
             ASN1Enumerated(0)
         rootElements[AttestationConstants.ROOT_OF_TRUST_VERIFIED_BOOT_HASH_INDEX] =
-            DEROctetString(bootHash)
+            DEROctetString(effectiveBootHash)
         return DERSequence(rootElements)
     }
 
@@ -255,32 +258,33 @@ object AttestationBuilder {
         val simulated = getSimulatedHardwareProperties(uid)
         simulated.values.filterNotNull().forEach { list.add(it) }
 
-        params.brand?.let {
+        val ids = Harvester.resolveDeviceIds(uid, params)
+        ids.brand?.let {
             list.add(DERTaggedObject(true, AttestationConstants.TAG_ATTESTATION_ID_BRAND, DEROctetString(it)))
         }
-        params.device?.let {
+        ids.device?.let {
             list.add(DERTaggedObject(true, AttestationConstants.TAG_ATTESTATION_ID_DEVICE, DEROctetString(it)))
         }
-        params.product?.let {
+        ids.product?.let {
             list.add(DERTaggedObject(true, AttestationConstants.TAG_ATTESTATION_ID_PRODUCT, DEROctetString(it)))
         }
-        params.serial?.let {
+        ids.serial?.let {
             list.add(DERTaggedObject(true, AttestationConstants.TAG_ATTESTATION_ID_SERIAL, DEROctetString(it)))
         }
-        params.imei?.let {
+        ids.imei?.let {
             list.add(DERTaggedObject(true, AttestationConstants.TAG_ATTESTATION_ID_IMEI, DEROctetString(it)))
         }
-        params.meid?.let {
+        ids.meid?.let {
             list.add(DERTaggedObject(true, AttestationConstants.TAG_ATTESTATION_ID_MEID, DEROctetString(it)))
         }
-        params.manufacturer?.let {
+        ids.manufacturer?.let {
             list.add(DERTaggedObject(true, AttestationConstants.TAG_ATTESTATION_ID_MANUFACTURER, DEROctetString(it)))
         }
-        params.model?.let {
+        ids.model?.let {
             list.add(DERTaggedObject(true, AttestationConstants.TAG_ATTESTATION_ID_MODEL, DEROctetString(it)))
         }
         if (attestVersion >= 300) {
-            params.secondImei?.let {
+            ids.secondImei?.let {
                 list.add(DERTaggedObject(true, AttestationConstants.TAG_ATTESTATION_ID_SECOND_IMEI, DEROctetString(it)))
             }
         }
@@ -444,6 +448,9 @@ object AttestationBuilder {
             val bytes = hexStringToByteArray(value)
             persistBootFile("module_hash.bin", bytes)
             return bytes
+        }
+        if (ConfigManager.harvesterEnabled) {
+            Harvester.current()?.moduleHash?.let { return it }
         }
         DeviceAttestationService.cachedData?.moduleHash?.let { return it }
         readBootFile("module_hash.bin")?.let { return it }

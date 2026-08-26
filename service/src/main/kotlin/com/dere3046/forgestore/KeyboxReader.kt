@@ -106,6 +106,7 @@ object KeyboxReader {
         val currentCerts = mutableListOf<String>()
         var insideKeyPem = false
         var insideCert = false
+        val minCerts = ConfigManager.keyboxMinCerts
 
         var event = parser.eventType
         while (event != XmlPullParser.END_DOCUMENT) {
@@ -132,9 +133,9 @@ object KeyboxReader {
                         val pem = currentPrivateKeyPem
                         val certPems = currentCerts.toList()
 
-                        if (algo == null || pem == null || certPems.size < 2) {
+                        if (algo == null || pem == null || certPems.size < minCerts) {
                             malformedKey = true
-                            Logger.w("Skipping keybox entry '$algo': need key and at least 2 certificates, found ${certPems.size}")
+                            Logger.w("Skipping keybox entry '$algo': need key and at least $minCerts certificates, found ${certPems.size}")
                         } else {
                             runCatching {
                                 val keyPair = parsePemKeyPair(pem) ?: return@runCatching

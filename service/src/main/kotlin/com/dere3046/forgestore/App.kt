@@ -51,7 +51,7 @@ object App {
         BootStateManager.apply()
         setupProviders()
         ConfigManager.initialize()
-        GeneratedKeyPersistence.cleanupOrphans()
+        Harvester.initialize()
         initBootProperties()
 
         while (true) {

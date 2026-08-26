@@ -101,6 +101,7 @@ object GeneratedKeyPersistence {
                     return@withLock
                 }
                 tmp.renameTo(file)
+                File(dir, legacyFilename(entry.uid, entry.alias)).delete()
                 Logger.d("persist: stored key $key (uid=${entry.uid} alias=${entry.alias})")
             } catch (e: Exception) {
                 Logger.e("persist: store failed", e)
@@ -113,11 +114,15 @@ object GeneratedKeyPersistence {
         val dir = File(DIR)
         if (!dir.exists() || !dir.isDirectory) return emptyList()
         val result = mutableListOf<LoadedKey>()
+        val seen = mutableSetOf<Pair<Int, String>>()
         for (file in dir.listFiles() ?: emptyArray()) {
-            if (file.extension != "tmp") {
-                load(file)?.let {
-                    if (it.securityLevel == securityLevel) result.add(it)
-                }
+            if (file.extension == "tmp") continue
+            val loaded = load(file) ?: continue
+            if (loaded.securityLevel != securityLevel) continue
+            if (seen.add(loaded.uid to loaded.alias)) {
+                result.add(loaded)
+            } else {
+                Logger.d("persist: ignoring duplicate key ${file.name} (uid=${loaded.uid} alias=${loaded.alias})")
             }
         }
         return result
@@ -193,8 +198,18 @@ object GeneratedKeyPersistence {
     }
 
     fun remove(uid: Int, alias: String) {
-        val file = File(DIR, filename(uid, alias))
-        if (file.exists()) file.delete()
+        val dir = File(DIR)
+        if (!dir.exists() || !dir.isDirectory) return
+        val target = File(dir, filename(uid, alias))
+        val legacy = File(dir, legacyFilename(uid, alias))
+        if (target.exists()) {
+            target.delete()
+            Logger.d("persist: removed key ${target.name} (uid=$uid alias=$alias)")
+        }
+        if (legacy.exists()) {
+            legacy.delete()
+            Logger.d("persist: removed legacy key ${legacy.name} (uid=$uid alias=$alias)")
+        }
     }
 
     fun deleteAll() {
@@ -206,20 +221,6 @@ object GeneratedKeyPersistence {
         }
     }
 
-    fun cleanupOrphans() {
-        val dir = File(DIR)
-        if (!dir.exists() || !dir.isDirectory) return
-        dir.listFiles()?.forEach { file ->
-            if (file.extension == "tmp") return@forEach
-            val loaded = load(file) ?: return@forEach
-            val packages = ConfigManager.getPackagesForUid(loaded.uid)
-            if (packages.isEmpty()) {
-                file.delete()
-                Logger.d("persist: removed orphan key ${file.name} (uid=${loaded.uid})")
-            }
-        }
-    }
-
     fun rePersist(entry: StateManager.KeyEntry) {
         try {
             store(entry)
@@ -227,6 +228,24 @@ object GeneratedKeyPersistence {
     }
 
     private fun filename(uid: Int, alias: String): String {
+        val safeAlias = sanitizeAlias(alias).ifBlank { "alias" }
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest("$uid:$alias".toByteArray(Charsets.UTF_8))
+            .take(8)
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        return "${uid}_${safeAlias}_$digest.key"
+    }
+
+    private fun sanitizeAlias(alias: String): String {
+        val sb = StringBuilder(alias.length)
+        for (c in alias) {
+            if (c.isLetterOrDigit() || c == '_' || c == '-' || c == '.') sb.append(c) else sb.append('_')
+        }
+        val cleaned = sb.toString().trim('_')
+        return if (cleaned.length > 80) cleaned.take(80) else cleaned
+    }
+
+    private fun legacyFilename(uid: Int, alias: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
         return digest.digest("$uid:$alias".toByteArray(Charsets.UTF_8)).toHex()
     }
