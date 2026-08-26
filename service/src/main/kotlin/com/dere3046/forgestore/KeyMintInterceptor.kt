@@ -280,12 +280,12 @@ class KeyMintInterceptor(
                 this.metadata = metadata
                 iSecurityLevel = levelBinder
             }
-            cacheMetadataSnapshot(keyId, metadata)
             Logger.d("Cached patched chain + teeResponse for alias=${keyDescriptor.alias}")
 
             CertificateHelper.updateCertificateChain(callingUid, metadata, patchedChain)
                 .onFailure { e -> Logger.e("updateCertificateChain failed", e) }
             metadata.authorizations = AttestationPatcher.patchAuthorizations(metadata.authorizations, callingUid)
+            cacheMetadataSnapshot(keyId, metadata)
             AttestationDossier.logAuthShape(callingUid, txId, metadata.authorizations)
 
             val override = Parcel.obtain()
@@ -967,7 +967,7 @@ class KeyMintInterceptor(
         }
     }
 
-    private fun cacheMetadataSnapshot(keyId: StateManager.KeyIdentifier, metadata: KeyMetadata) {
+    internal fun cacheMetadataSnapshot(keyId: StateManager.KeyIdentifier, metadata: KeyMetadata) {
         val nspace = metadata.key?.nspace ?: return
         metadataCache[key(keyId.uid, keyId.alias)] = metadata
         nspaceToAlias[key(uid = keyId.uid, alias = nspace.toString())] = keyId.alias

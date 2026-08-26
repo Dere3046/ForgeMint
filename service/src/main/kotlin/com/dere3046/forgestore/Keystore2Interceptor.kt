@@ -165,8 +165,6 @@ class Keystore2Interceptor(
             }
 
             if (descriptor.domain == Domain.KEY_ID) {
-                val metadataResult = handleGetKeyEntryByMetadata(descriptor, uid)
-                if (metadataResult != null) return metadataResult
                 val teeResp = findTeeResponse(uid, descriptor.nspace)
                 if (teeResp != null) {
                     val reply = Parcel.obtain()
@@ -174,6 +172,8 @@ class Keystore2Interceptor(
                     reply.writeTypedObject(teeResp, 0)
                     return TransactionResult.OverrideReply(reply)
                 }
+                val metadataResult = handleGetKeyEntryByMetadata(descriptor, uid)
+                if (metadataResult != null) return metadataResult
             }
 
             val entry = descriptor.alias?.let { findEntry(uid, it) }
@@ -464,6 +464,9 @@ class Keystore2Interceptor(
             CertificateHelper.updateCertificateChain(uid, metadata, patchedChain)
                 .onFailure { e -> Logger.e("updateCertificateChain failed", e) }
             metadata.authorizations = AttestationPatcher.patchAuthorizations(metadata.authorizations, uid)
+            val cacheKeyId = keyId ?: StateManager.KeyIdentifier(uid, "")
+            interceptorForSecurityLevel(response.metadata.keySecurityLevel)
+                .cacheMetadataSnapshot(cacheKeyId, metadata)
             AttestationDossier.logAuthShape(uid, txId, metadata.authorizations)
 
             val override = Parcel.obtain()
