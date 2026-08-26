@@ -360,7 +360,7 @@ object AttestationPatcher {
 
         val idOverrides = buildDeviceIdOverrides(Harvester.harvestedDeviceIds())
 
-        val patchedSoftware = patchAuthorizationList(softwareElements.orEmpty(), overrides, removeTags)
+        val (patchedSoftware, _) = patchAuthorizationList(softwareElements.orEmpty(), overrides, removeTags)
         val (patchedTee, _) = patchAuthorizationList(teeElements, overrides, removeTags, insertMissing = true)
 
         val finalSoftware = replaceOnly(patchedSoftware, idOverrides)
