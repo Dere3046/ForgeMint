@@ -359,9 +359,10 @@ object AttestationPatcher {
         }
 
         val idOverrides = buildDeviceIdOverrides(Harvester.harvestedDeviceIds())
+        val seen = mutableSetOf<Int>()
 
-        val (patchedSoftware, _) = patchAuthorizationList(softwareElements.orEmpty(), overrides, removeTags)
-        val (patchedTee, _) = patchAuthorizationList(teeElements, overrides, removeTags, insertMissing = true)
+        val patchedSoftware = patchAuthorizationList(softwareElements.orEmpty(), overrides, removeTags, seen)
+        val patchedTee = patchAuthorizationList(teeElements, overrides, removeTags, seen, insertMissing = true)
 
         val finalSoftware = replaceOnly(patchedSoftware, idOverrides)
         val finalTee = replaceOnly(patchedTee, idOverrides)
@@ -384,13 +385,13 @@ object AttestationPatcher {
         elements: List<ASN1Encodable>,
         overrides: Map<Int, DERTaggedObject>,
         removeTags: Set<Int>,
+        seen: MutableSet<Int>,
         insertMissing: Boolean = false,
-    ): Pair<List<ASN1Encodable>, Set<Int>> {
-        val seen = mutableSetOf<Int>()
+    ): List<ASN1Encodable> {
         val out = mutableListOf<ASN1Encodable>()
 
         for (element in elements) {
-            val tagged = element as? DERTaggedObject
+            val tagged = element as? ASN1TaggedObject
             val tag = tagged?.tagNo
             if (tag != null && tag in removeTags) continue
             if (tag != null && tag in overrides) {
@@ -406,14 +407,14 @@ object AttestationPatcher {
                 if (tag in seen) continue
                 val elem = overrides[tag]!!
                 val index = out.indexOfFirst {
-                    ((it as? DERTaggedObject)?.tagNo ?: Int.MAX_VALUE) > tag
+                    ((it as? ASN1TaggedObject)?.tagNo ?: Int.MAX_VALUE) > tag
                 }
                 if (index < 0) out.add(elem) else out.add(index, elem)
                 seen.add(tag)
             }
         }
 
-        return out to seen
+        return out
     }
 
     private fun buildDeviceIdOverrides(ids: Harvester.DeviceIds): Map<Int, DERTaggedObject> {
@@ -437,7 +438,7 @@ object AttestationPatcher {
 
     private fun replaceOnly(elements: List<ASN1Encodable>, overrides: Map<Int, DERTaggedObject>): List<ASN1Encodable> {
         return elements.map { element ->
-            val tagged = element as? DERTaggedObject
+            val tagged = element as? ASN1TaggedObject
             val tag = tagged?.tagNo
             if (tag != null && tag in overrides) overrides[tag]!! else element
         }
